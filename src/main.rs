@@ -2,71 +2,10 @@
 
 use std::fmt::Display;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum TokenType {
-    Action,
-    Number,
-    Position,
-    Target,
+pub mod token;
 
-    // Stats
-    Attack,
-    Health,
-    Level,
-    Experience,
-    SummonAttack,
-    SummonHealth,
-
-    // Entity
-    Trumpet,
-    Strawberry,
-
-    /// End of statement
-    End,
-
-    // Positions
-    Adjacent,
-
-    // Targets
-    Perks,
-    Food,
-    Friendly,
-
-    // Conditions/Logic
-    If,
-    Your,
-    Equal,
-
-    // Actions
-    Choose,
-    Deal,
-    Gain,
-    Give,
-    Push,
-    Remove,
-    Set,
-    Spend,
-    Stock,
-    Summon,
-    Swap,
-    Break,
-    Copy,
-    Make,
-    Friend,
-    Increase,
-    Resummon,
-    Steal,
-    Activate,
-    Discount,
-    Knock,
-    Reduce,
-    Swallow,
-    Take,
-    Transform,
-    Replace,
-    Shuffle,
-    Unfreeze,
-}
+use anyhow::bail;
+use token::{Token, TokenType};
 
 fn is_digit(chr: Option<char>) -> Option<char> {
     chr.filter(|chr| chr.is_ascii_digit())
@@ -76,47 +15,38 @@ fn is_alpha(chr: Option<char>) -> Option<char> {
     chr.filter(|chr| chr.is_alphabetic())
 }
 
-#[derive(Debug, PartialEq, Eq)]
-struct Token<'src> {
-    /// Type of token.
-    ttype: TokenType,
-    /// Text of token.
-    text: &'src str,
-    /// Token source metadata.
-    metadata: ScannerState,
-}
-
-impl<'src> Display for Token<'src> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{} ({:?}) ({})", self.metadata, self.ttype, self.text)
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct ScannerState {
+pub struct ScannerState {
     /// Start character index of lexeme.
-    start: usize,
+    pub start: usize,
     /// Current character index of lexeme.
-    current: usize,
+    pub current: usize,
     /// Curent line
-    line: usize,
+    pub line: usize,
 }
 
 impl ScannerState {
     /// Move [`ScannerState::current`] cursor index by some amount.
     ///
     /// ### Params
+    /// * `curr`
+    ///     * If `true`, current cursor. Otherwise, start cursor.
     /// * `by`
     ///     * Amount to move cursor by.
     ///     * If negative, will perform saturating sub.
     ///
     /// ### Returns
     /// * Instance
-    fn move_cursor(&mut self, by: isize) -> &mut Self {
-        if by.is_negative() {
-            self.current = self.current.saturating_sub(-by as usize);
+    fn move_cursor(&mut self, curr: bool, by: isize) -> &mut Self {
+        let cursor = if curr {
+            &mut self.current
         } else {
-            self.current += by as usize;
+            &mut self.start
+        };
+        if by.is_negative() {
+            *cursor = cursor.saturating_sub(-by as usize);
+        } else {
+            *cursor += by as usize;
         }
         self
     }
@@ -163,13 +93,13 @@ impl<'src> Scanner<'src> {
         }
     }
 
-    pub fn tokenize(&'src self) -> Vec<Token<'src>> {
+    pub fn tokenize(&'src self) -> anyhow::Result<Vec<Token<'src>>> {
         let mut tokens = vec![];
         let mut state = ScannerState::default();
 
         loop {
             state.start = state.current;
-            if self.scan_token(&mut state, &mut tokens).is_none() {
+            if self.scan_token(&mut state, &mut tokens)?.is_none() {
                 break;
             };
         }
@@ -180,16 +110,16 @@ impl<'src> Scanner<'src> {
             text: "",
             metadata: state,
         });
-        tokens
+        Ok(tokens)
     }
 
     fn scan_token(
         &'src self,
         state: &mut ScannerState,
         tokens: &mut Vec<Token<'src>>,
-    ) -> Option<()> {
+    ) -> anyhow::Result<Option<()>> {
         let Some(c) = self.advance(state) else {
-            return None;
+            return Ok(None);
         };
 
         match c {
@@ -207,7 +137,7 @@ impl<'src> Scanner<'src> {
                 // Match level
             }
             '+' | '-' => {
-                self.scan_sign_token(state, tokens);
+                self.scan_sign_token(state, tokens)?;
             }
             '\n' => {
                 state.line += 1;
@@ -216,74 +146,105 @@ impl<'src> Scanner<'src> {
             '.' | ',' | ' ' | '\t' | '/' => {}
             // Scan digits.
             '0'..='9' => {
-                self.scan_numeric_token(state, tokens);
+                self.scan_numeric_token(state, tokens)?;
             }
             _ => {
                 eprintln!("{state}. Invalid character ({c})")
             }
         }
 
-        Some(())
+        Ok(Some(()))
     }
 
     fn scan_sign_token(
         &'src self,
         state: &mut ScannerState,
         tokens: &mut Vec<Token<'src>>,
-    ) -> Option<()> {
-        // Ignore +
-        state.move_cursor(1).start_to_current();
+    ) -> anyhow::Result<()> {
+        state.start_to_current();
 
         // Keep reading until not a digit.
         // state.current now points to char after digits.
         while self.advance_by_cond(state, is_digit).is_some() {}
 
-        // Space between num and attribute (ex. +1 attack)
-        let next_chr = self.peek(state.current);
-        if next_chr.filter(|chr| *chr == ' ').is_some() {
-            state.move_cursor(1).start_to_current();
+        // Include sign in value.
+        let mut num_scan_state = state.clone();
+        num_scan_state.move_cursor(false, -1);
 
-            // Consume entire alphabetic string ahead.
-            while self.advance_by_cond(state, is_alpha).is_some() {}
-        } else {
-            eprintln!("{state} Non-whitespace {next_chr:?} after digit.");
-            return None;
+        let next_chr = self.peek(state.current);
+        match next_chr {
+            // Space between num and attribute
+            // ex. +1 attack
+            Some(' ') => {
+                state.move_cursor(true, 1).start_to_current();
+
+                // Consume entire alphabetic string ahead.
+                while self.advance_by_cond(state, is_alpha).is_some() {}
+
+                let ttype: TokenType = self.source.get(state.start..state.current).try_into()?;
+                tokens.push(self.build_token(&num_scan_state, ttype))
+            }
+            Some(_) => {
+                bail!("{state} Non-whitespace {next_chr:?} after digit.");
+            }
+            None => todo!(),
         }
-        Some(())
+
+        Ok(())
     }
 
     fn scan_numeric_token(
         &'src self,
         state: &mut ScannerState,
         tokens: &mut Vec<Token<'src>>,
-    ) -> Option<()> {
+    ) -> anyhow::Result<()> {
         // Keep going if digit. ex. '12/12'
         while self.advance_by_cond(state, is_digit).is_some() {}
 
-        // Check if on '/' delimiting summon stats (atk/health).
-        if self.peek(state.current).filter(|chr| *chr == '/').is_some() {
-            tokens.push(self.build_token(state, TokenType::SummonAttack));
+        match self.peek(state.current) {
+            // ex. 12/12
+            Some('/') => {
+                tokens.push(self.build_token(state, TokenType::Attack));
 
-            // Set new cursor position skipping delimiter.
-            state.move_cursor(1).start_to_current();
+                // Set new cursor position skipping delimiter.
+                state.move_cursor(true, 1).start_to_current();
 
-            // Keep going after '/' to get rest.
-            while self.advance_by_cond(state, is_digit).is_some() {}
+                // Keep going after '/' to get rest.
+                while self.advance_by_cond(state, is_digit).is_some() {}
 
-            // Didn't move cursor.
-            if state.current == state.start {
-                eprintln!(
-                    "{state}. Character ({:?}) following '/' not a digit.",
-                    self.peek(state.current + 1)
-                );
-                return Some(());
-            };
-            tokens.push(self.build_token(state, TokenType::SummonHealth))
-        } else {
-            // Otherwise, just a number.
-            tokens.push(self.build_token(state, TokenType::Number))
+                // Didn't move cursor.
+                if state.current == state.start {
+                    bail!(
+                        "{state}. Character ({:?}) following '/' not a digit.",
+                        self.peek(state.current + 1)
+                    );
+                };
+                tokens.push(self.build_token(state, TokenType::Health))
+            }
+            // ex. 1-gold
+            Some('-') => {
+                // Store state so only numeric values captured.
+                let num_scan_state = state.clone();
+
+                state.move_cursor(true, 1).start_to_current();
+
+                // Move cursor while alphabetical chars.
+                while self.advance_by_cond(state, is_alpha).is_some() {}
+
+                let ttype: TokenType = self.source.get(state.start..state.current).try_into()?;
+
+                tokens.push(self.build_token(&num_scan_state, ttype))
+            }
+            // ex. 1 attack
+            Some(' ') => {
+                state.move_cursor(true, 1).start_to_current();
+                while self.advance_by_cond(state, is_alpha).is_some() {}
+            }
+            // Ignore everything else and just add number.
+            Some(_) | None => tokens.push(self.build_token(state, TokenType::Number)),
         }
-        Some(())
+
+        Ok(())
     }
 
     /// Peek at index character without advancing `Scanner`.
@@ -348,17 +309,85 @@ mod test {
     use super::*;
 
     #[test]
-    fn test_tokenize_numeric() {
-        let valid: Scanner = Scanner::new("12/13");
-        let invalid_health_missing: Scanner = Scanner::new("12/");
-        let invalid_health_nondigit: Scanner = Scanner::new("12/a");
-
-        let tokens = valid.tokenize();
+    fn test_tokenize_sign_numeric_attr() {
+        let valid_attr_num = Scanner::new("+13 health and +12 attack");
+        let tokens = valid_attr_num.tokenize().unwrap();
         assert_eq!(
             tokens,
             vec![
                 Token {
-                    ttype: TokenType::SummonAttack,
+                    ttype: TokenType::Health,
+                    text: "+13",
+                    metadata: ScannerState {
+                        start: 0,
+                        current: 3,
+                        line: 1
+                    }
+                },
+                Token {
+                    ttype: TokenType::Attack,
+                    text: "+12",
+                    metadata: ScannerState {
+                        start: 15,
+                        current: 18,
+                        line: 1
+                    }
+                },
+                Token {
+                    ttype: TokenType::End,
+                    text: "",
+                    metadata: ScannerState {
+                        start: 25,
+                        current: 25,
+                        line: 1
+                    }
+                }
+            ]
+        )
+    }
+
+    #[test]
+    fn test_tokenize_numeric_attr() {
+        let valid_attr_num = Scanner::new("1-gold");
+        let tokens = valid_attr_num.tokenize().unwrap();
+
+        assert_eq!(
+            tokens,
+            vec![
+                Token {
+                    ttype: TokenType::Gold,
+                    text: "1",
+                    metadata: ScannerState {
+                        start: 0,
+                        current: 1,
+                        line: 1
+                    }
+                },
+                Token {
+                    ttype: TokenType::End,
+                    text: "",
+                    metadata: ScannerState {
+                        start: 6,
+                        current: 6,
+                        line: 1
+                    }
+                }
+            ]
+        )
+    }
+
+    #[test]
+    fn test_tokenize_numeric_summon_stats() {
+        let valid_summon_stats: Scanner = Scanner::new("12/13");
+        let invalid_summon_stats_health_missing: Scanner = Scanner::new("12/");
+        let invalid_summon_stats_health_nondigit: Scanner = Scanner::new("12/a");
+
+        let tokens = valid_summon_stats.tokenize().unwrap();
+        assert_eq!(
+            tokens,
+            vec![
+                Token {
+                    ttype: TokenType::Attack,
                     text: "12",
                     metadata: ScannerState {
                         start: 0,
@@ -367,7 +396,7 @@ mod test {
                     }
                 },
                 Token {
-                    ttype: TokenType::SummonHealth,
+                    ttype: TokenType::Health,
                     text: "13",
                     metadata: ScannerState {
                         start: 3,

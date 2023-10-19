@@ -90,12 +90,12 @@ struct SAPEffect<'src> {
 
 impl<'src> SAPEffect<'src> {
     /// Create SAP effect.
-    fn new(effect: &'src str) -> SAPEffect<'src> {
+    fn new(trigger: Option<&'src str>, effect: &'src str) -> SAPEffect<'src> {
         // Store a lowercase version of effect for case-insensitive token matching.
         SAPEffect {
             effect,
             lowercase_effect: effect.to_ascii_lowercase(),
-            trigger: None,
+            trigger,
         }
     }
 
@@ -160,7 +160,7 @@ impl<'src> SAPEffect<'src> {
         tokens: &mut Vec<Token<'src>>,
     ) -> anyhow::Result<()> {
         // First word will be capitalized.
-        let prev_chr = self.peek(state.start.saturating_sub(1));
+        let prev_chr = state.start.checked_sub(1).and_then(|idx| self.peek(idx));
         let is_itemname = self
             .peek(state.start)
             .filter(|chr| chr.is_ascii_uppercase() && prev_chr.is_some())
@@ -437,11 +437,59 @@ fn main() {}
 
 #[cfg(test)]
 mod test {
+    use crate::token::actions::ActionType;
+
     use super::*;
 
     #[test]
+    fn test_tokenize_gain_effect() {
+        let effect = SAPEffect::new(None, "Gain +2 attack and +2 health.");
+        let tokens = effect.tokenize().unwrap();
+        assert_eq!(
+            tokens,
+            vec![
+                Token {
+                    ttype: TokenType::Action(ActionType::Gain),
+                    text: "Gain",
+                    metadata: Scanner {
+                        start: 0,
+                        current: 4,
+                        line: 1
+                    }
+                },
+                Token {
+                    ttype: TokenType::Attribute(AttributeType::Attack),
+                    text: "+2",
+                    metadata: Scanner {
+                        start: 5,
+                        current: 7,
+                        line: 1
+                    }
+                },
+                Token {
+                    ttype: TokenType::Attribute(AttributeType::Health),
+                    text: "+2",
+                    metadata: Scanner {
+                        start: 19,
+                        current: 21,
+                        line: 1
+                    }
+                },
+                Token {
+                    ttype: TokenType::End,
+                    text: "",
+                    metadata: Scanner {
+                        start: 29,
+                        current: 29,
+                        line: 1
+                    }
+                }
+            ]
+        )
+    }
+    #[test]
     fn test_tokenize_sign_numeric_perc_attr() {
-        let valid_attr_num = SAPEffect::new("+100% health and +120% attack");
+        let valid_attr_num = SAPEffect::new(None, "+100% health and +120% attack");
         let tokens = valid_attr_num.tokenize().unwrap();
 
         assert_eq!(
@@ -480,7 +528,7 @@ mod test {
 
     #[test]
     fn test_tokenize_sign_numeric_attr() {
-        let valid_attr_num = SAPEffect::new("+13 health and +12 attack");
+        let valid_attr_num = SAPEffect::new(None, "+13 health and +12 attack");
         let tokens = valid_attr_num.tokenize().unwrap();
         assert_eq!(
             tokens,
@@ -518,7 +566,7 @@ mod test {
 
     #[test]
     fn test_tokenize_numeric_attr() {
-        let valid_attr_num = SAPEffect::new("1-gold");
+        let valid_attr_num = SAPEffect::new(None, "1-gold");
         let tokens = valid_attr_num.tokenize().unwrap();
 
         assert_eq!(
@@ -548,9 +596,9 @@ mod test {
 
     #[test]
     fn test_tokenize_numeric_summon_stats() {
-        let valid_summon_stats = SAPEffect::new("12/13");
-        let invalid_summon_stats_health_missing = SAPEffect::new("12/");
-        let invalid_summon_stats_health_nondigit = SAPEffect::new("12/a");
+        let valid_summon_stats = SAPEffect::new(None, "12/13");
+        let invalid_summon_stats_health_missing = SAPEffect::new(None, "12/");
+        let invalid_summon_stats_health_nondigit = SAPEffect::new(None, "12/a");
 
         assert!(invalid_summon_stats_health_missing.tokenize().is_err());
         assert!(invalid_summon_stats_health_nondigit.tokenize().is_err());

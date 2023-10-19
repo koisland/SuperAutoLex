@@ -2,10 +2,25 @@
 Lexer to parse SAP Pet effect text. WIP
 
 
-### Generate `data/` CSVs
+### Generate `data/` CSV
 Using [`saptest`](https://github.com/koisland/SuperAutoTest)'s `sap.db`.
 
 ```bash
 mkdir -p data
-for i in {1..6}; do sqlite3 -csv -header sap.db "select name,effect from pets where tier = ${i} and is_token = 'false'" | sort | uniq > data/t${i}.csv; done
+sqlite3 -csv -header sap.db "select name,effect_trigger,effect from pets where is_token = 'false'" | sort | uniq > data/effects.csv
 ```
+
+### Unique Effect Triggers
+
+```bash
+awk -F, '{ gsub("\"", "", $2); print $2 }' data/effects.csv | sort | uniq
+```
+
+### Rules
+
+Item names are always uppercase.
+* Pets can be one or two words long.
+    * `Dog`
+    * `Lizard Tail`
+* Foods end with `Perk`.
+    * `Melon Perk`

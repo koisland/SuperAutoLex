@@ -1,7 +1,16 @@
+[lib]
+name = "saplex"
+path = "src/lib.rs"
+
 [package]
 name = "saplex"
 version = "0.1.0"
+authors = ["Keisuke K. Oshima <koshima789@gmail.com>"]
+description = "A library for parsing Super Auto Pets effects."
+repository = "https://github.com/koisland/SuperAutoLex"
+readme = "README.md"
 edition = "2021"
+license = "MIT"
 
 [dependencies]
 anyhow = "1.0.75"

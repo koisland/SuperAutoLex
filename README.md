@@ -17,6 +17,11 @@ awk -F, '{ gsub("\"", "", $2); print $2 }' data/effects.csv | sort | uniq
 ```
 
 ### Rules
+The first word of any effect must be:
+* An action
+    * `Give any friend ...`
+* A condition
+    * `If all friends ...`
 
 Item names are always uppercase.
 * Pets can be one or two words long.
@@ -24,3 +29,6 @@ Item names are always uppercase.
     * `Lizard Tail`
 * Foods end with `Perk`.
     * `Melon Perk`
+
+### TODO
+* [ ] Declarative macro to construct effects.

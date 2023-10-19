@@ -7,6 +7,7 @@ pub enum NumericType {
     Number,
     Multiplier,
     Percent,
+    Sum,
     Plus,
     Minus,
 }

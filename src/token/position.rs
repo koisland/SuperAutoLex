@@ -15,9 +15,7 @@ pub enum PositionType {
     Lowest,
     LeftMost,
     RightMost,
-    DirectlyBack,
-    Whoever,
-    That,
+    Trigger,
 }
 
 impl FromStr for PositionType {
@@ -35,9 +33,7 @@ impl FromStr for PositionType {
             "lowest" => PositionType::Lowest,
             "left-most" => PositionType::LeftMost,
             "right-most" => PositionType::RightMost,
-            "directly back" => PositionType::DirectlyBack,
-            "whoever" => PositionType::Whoever,
-            "that" => PositionType::That,
+            "directly back" |"whoever"| "it" => PositionType::Trigger,
             _ => bail!("{s} not a valid PositionType"),
         })
     }

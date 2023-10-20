@@ -7,13 +7,15 @@ pub enum LogicType {
     If,
     // If next lexeme is higher or lower switch to GreaterEqual or LessEqual. Otherwise, do nothing.
     Or,
+    And,
     Next,
+    Then,
     LessEqual,
     Equal,
     GreaterEqual,
     UpTo,
     With,
-    ForEach
+    ForEach,
 }
 
 impl FromStr for LogicType {
@@ -22,6 +24,8 @@ impl FromStr for LogicType {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Ok(match s {
             "if" => LogicType::If,
+            "and" => LogicType::And,
+            "then" => LogicType::Then,
             "or" => LogicType::Or,
             "next" => LogicType::Next,
             "equal" => LogicType::Equal,

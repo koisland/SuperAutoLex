@@ -1,19 +1,24 @@
 // https://craftinginterpreters.com/scanning.html
 
-use std::{fmt::Display, str::FromStr};
+use std::fmt::Display;
 
 pub mod token;
 
-use anyhow::bail;
+use anyhow::{bail, Context};
 use token::{
     attribute::AttributeType, logic::LogicType, numeric::NumericType, target::TargetType,
     types::TokenType, Token,
 };
 
+#[deny(missing_docs)]
+#[deny(clippy::missing_docs_in_private_items)]
+
+/// Check if ascii digit char.
 fn is_digit(chr: Option<char>) -> Option<char> {
     chr.filter(|chr| chr.is_ascii_digit())
 }
 
+/// Check if is alphabet char or apostrophe.
 fn is_alpha(chr: Option<char>) -> Option<char> {
     chr.filter(|chr| chr.is_alphabetic() || *chr == '\'')
 }
@@ -79,7 +84,7 @@ impl Default for Scanner {
 }
 
 #[derive(Default)]
-struct SAPEffect<'src> {
+pub struct SAPEffect<'src> {
     /// Effect.
     pub effect: &'src str,
     /// Lower-case effect.
@@ -90,7 +95,7 @@ struct SAPEffect<'src> {
 
 impl<'src> SAPEffect<'src> {
     /// Create SAP effect.
-    fn new(trigger: Option<&'src str>, effect: &'src str) -> SAPEffect<'src> {
+    pub fn new(trigger: Option<&'src str>, effect: &'src str) -> SAPEffect<'src> {
         // Store a lowercase version of effect for case-insensitive token matching.
         SAPEffect {
             effect,
@@ -205,7 +210,8 @@ impl<'src> SAPEffect<'src> {
                     } else {
                         // Not an item we scanned.
                         // Convert to token (if possible), add, and break from loop.
-                        if let Some(Ok(ttype)) = prev_word.map(TokenType::from_str) {
+                        if let Some(Ok(ttype)) = prev_word.map(|word| TokenType::parse(word, None))
+                        {
                             tokens.push(self.build_token(state, ttype)?);
                         }
                         break;
@@ -221,14 +227,14 @@ impl<'src> SAPEffect<'src> {
             // Otherwise, just create current token.
             // ex. attack
             (Some(' '), false) => {
-                let word = self.lowercase_effect.get(state.start..state.current);
-                if let Some(Ok(ttype)) = word.map(TokenType::from_str) {
+                let word = self.get_text(state, true)?;
+                if let Ok(ttype) = TokenType::parse(word, None) {
                     tokens.push(self.build_token(state, ttype)?);
                 }
             }
             (Some(_), false) | (None, _) => {
-                let word = self.lowercase_effect.get(state.start..state.current);
-                if let Some(Ok(ttype)) = word.map(TokenType::from_str) {
+                let word = self.get_text(state, true)?;
+                if let Ok(ttype) = TokenType::parse(word, None) {
                     tokens.push(self.build_token(state, ttype)?);
                 }
             }
@@ -249,36 +255,26 @@ impl<'src> SAPEffect<'src> {
         while self.advance_by_cond(state, is_digit).is_some() {}
 
         // Include sign in value.
-        let mut num_scan_state = state.clone();
-        num_scan_state.move_cursor(false, -1);
+        let mut num_literal_state = state.clone();
+        num_literal_state.move_cursor(false, -1);
 
         let next_chr = self.peek(state.current);
         match next_chr {
             // Raw attribute number.
             // ex. +1 attack
             Some(' ') => {
-                if let Ok(token) = self.consume_by_cond(state, Some(num_scan_state), 1, is_alpha) {
-                    tokens.push(token)
-                }
+                let token = self.consume_while_cond(state, Some(num_literal_state), 1, is_alpha)?;
+                tokens.push(token)
             }
             // Percentage multiplier.
             // ex. +100% trumpets
             Some('%') => {
-                // Skip % and space after.
-                state.move_cursor(true, 2).set_start_to_current();
-
-                // Consume entire alphabetic string ahead.
-                while self.advance_by_cond(state, is_alpha).is_some() {}
-
-                // Coerce any token attribute into a percentage equivalent.
-                let lowercase_token = self.lowercase_effect.get(state.start..state.current);
-                let Some(Ok(attr_type)) = lowercase_token.map(AttributeType::from_str) else {
-                    bail!("{state} {lowercase_token:?} cannot be coerced to a valid AttributeType.")
-                };
-                tokens.push(self.build_token(
-                    &num_scan_state,
-                    TokenType::Attribute(attr_type.into_percent_variant()?),
-                )?);
+                let mut token =
+                    self.consume_while_cond(state, Some(num_literal_state), 2, is_alpha)?;
+                if let TokenType::Attribute(ref mut attr_type) = token.ttype {
+                    *attr_type = attr_type.into_percent_variant()?;
+                }
+                tokens.push(token)
             }
             Some(_) => {
                 bail!("{state} Non-whitespace {next_chr:?} after digit.");
@@ -297,40 +293,38 @@ impl<'src> SAPEffect<'src> {
         // Keep going if digit. ex. '12/12'
         while self.advance_by_cond(state, is_digit).is_some() {}
 
-        // Store state so can capture numeric values only if desired.
-        let num_scan_state = state.clone();
+        let num_literal_state = state.clone();
 
         match self.peek(state.current) {
             // ex. 12/12
             Some('/') => {
-                tokens.push(self.build_token(state, TokenType::Attribute(AttributeType::Attack))?);
+                tokens.push(self.build_token(
+                    state,
+                    TokenType::Attribute(AttributeType::Attack(Some(
+                        self.get_text(&num_literal_state, false)?.parse()?,
+                    ))),
+                )?);
 
-                // Set new cursor position skipping delimiter.
-                state.move_cursor(true, 1).set_start_to_current();
-
-                // Keep going after '/' to get rest.
-                while self.advance_by_cond(state, is_digit).is_some() {}
-
-                // Didn't move cursor.
-                if state.current == state.start {
-                    bail!(
-                        "{state}. Character ({:?}) following '/' not a digit.",
-                        self.peek(state.current)
-                    );
-                };
-                tokens.push(self.build_token(state, TokenType::Attribute(AttributeType::Health))?)
+                // Registers as numeric since no attribute text.
+                // Change so is correctly labeled health.
+                let mut health_token = self.consume_while_cond(state, None, 1, is_digit)?;
+                health_token.ttype =
+                    TokenType::Attribute(AttributeType::Health(Some(health_token.text.parse()?)));
+                tokens.push(health_token)
             }
             // ex. 1 attack
             // ex. 1-gold
             Some(' ') | Some('-') => {
-                if let Ok(token) = self.consume_by_cond(state, Some(num_scan_state), 1, is_alpha) {
-                    tokens.push(token)
-                }
+                let token = self.consume_while_cond(state, Some(num_literal_state), 1, is_alpha)?;
+                tokens.push(token)
             }
             // Ignore everything else and just add number.
-            Some(_) | None => {
-                tokens.push(self.build_token(state, TokenType::Numeric(NumericType::Number))?)
-            }
+            Some(_) | None => tokens.push(self.build_token(
+                state,
+                TokenType::Numeric(NumericType::Number(Some(
+                    self.get_text(&num_literal_state, false)?.parse()?,
+                ))),
+            )?),
         }
 
         Ok(())
@@ -346,14 +340,14 @@ impl<'src> SAPEffect<'src> {
             .map(|byte| *byte as char)
     }
 
-    /// Moves [`Scanner`] along [`SAPEffect`] consuming valid characters for a [`Token`] until the provided condition fails.
+    /// Consume characters in [`SAPEffect`] [`Scanner`] building a [`Token`] while the provided condition is valid.
     ///
     /// ### Params
     /// * `state`
     ///     * [`Scanner`] to be modified.
-    /// * `token_state`
-    ///     * Optional [`Scanner`] to be used to construct [`Token`] and its [`Token::text`].
-    ///     * Defaults to `state` if not provided.
+    /// * `literal_state`
+    ///     * Optional state to be used to construct a [`Token`]'s literal value.
+    ///     * Also providing will in
     /// * `cur_adj`
     ///     * Cursor adjustment for `state`'s [`Scanner::current`].
     /// * `cond`
@@ -361,10 +355,10 @@ impl<'src> SAPEffect<'src> {
     ///
     /// ### Returns
     /// * [`Token`]
-    fn consume_by_cond(
+    fn consume_while_cond(
         &'src self,
         state: &mut Scanner,
-        token_state: Option<Scanner>,
+        literal_state: Option<Scanner>,
         cur_adj: isize,
         cond: impl Fn(Option<char>) -> Option<char>,
     ) -> anyhow::Result<Token<'src>> {
@@ -373,27 +367,38 @@ impl<'src> SAPEffect<'src> {
         // Move cursor while condition is met.
         while self.advance_by_cond(state, &cond).is_some() {}
 
-        let Some(word) = self.lowercase_effect.get(state.start..state.current) else {
-            bail!("{state} Cannot get word.")
-        };
+        let word = self.get_text(state, true)?;
+        if let Some(mut updated_literal_state) = literal_state {
+            let literal_value = self.get_text(&updated_literal_state, false)?;
+            // Use literal state updated so Token text includes both literal value and attribute token.
+            updated_literal_state.current = state.current;
+            self.build_token(
+                &updated_literal_state,
+                TokenType::parse(word, Some(literal_value))?,
+            )
+        } else {
+            self.build_token(state, TokenType::parse(word, None)?)
+        }
+    }
 
-        self.build_token(
-            token_state.as_ref().unwrap_or(state),
-            TokenType::from_str(word)?,
-        )
+    fn get_text(&'src self, state: &Scanner, lowercase: bool) -> anyhow::Result<&'src str> {
+        let source = if lowercase {
+            &self.lowercase_effect
+        } else {
+            self.effect
+        };
+        source.get(state.start..state.current).with_context(|| {
+            format!(
+                "Invalid start {} and current {} indices in source.",
+                state.start, state.current
+            )
+        })
     }
 
     fn build_token(&self, state: &Scanner, ttype: TokenType) -> anyhow::Result<Token> {
-        let Some(text) = self.effect.get(state.start..state.current) else {
-            bail!(
-                "Invalid start {} and current {} indices in source.",
-                state.start,
-                state.current
-            )
-        };
         Ok(Token {
             ttype,
-            text,
+            text: self.get_text(state, false)?,
             metadata: state.clone(),
         })
     }
@@ -433,18 +438,18 @@ impl<'src> SAPEffect<'src> {
     }
 }
 
-fn main() {}
-
 #[cfg(test)]
 mod test {
     use crate::token::actions::ActionType;
+    use pretty_assertions::assert_eq;
 
     use super::*;
 
     #[test]
-    fn test_tokenize_gain_effect() {
-        let effect = SAPEffect::new(None, "Gain +2 attack and +2 health.");
+    fn test_tokenize_sign_numeric_attr() {
+        let effect = SAPEffect::new(None, "Gain +3 attack and +2 health.");
         let tokens = effect.tokenize().unwrap();
+
         assert_eq!(
             tokens,
             vec![
@@ -458,20 +463,29 @@ mod test {
                     }
                 },
                 Token {
-                    ttype: TokenType::Attribute(AttributeType::Attack),
-                    text: "+2",
+                    ttype: TokenType::Attribute(AttributeType::Attack(Some(3))),
+                    text: "+3 attack",
                     metadata: Scanner {
                         start: 5,
-                        current: 7,
+                        current: 14,
                         line: 1
                     }
                 },
                 Token {
-                    ttype: TokenType::Attribute(AttributeType::Health),
-                    text: "+2",
+                    ttype: TokenType::Logic(LogicType::And),
+                    text: "and",
+                    metadata: Scanner {
+                        start: 15,
+                        current: 18,
+                        line: 1
+                    }
+                },
+                Token {
+                    ttype: TokenType::Attribute(AttributeType::Health(Some(2))),
+                    text: "+2 health",
                     metadata: Scanner {
                         start: 19,
-                        current: 21,
+                        current: 28,
                         line: 1
                     }
                 },
@@ -496,20 +510,29 @@ mod test {
             tokens,
             vec![
                 Token {
-                    ttype: TokenType::Attribute(AttributeType::HealthPercent),
-                    text: "+100",
+                    ttype: TokenType::Attribute(AttributeType::HealthPercent(Some(100.0))),
+                    text: "+100% health",
                     metadata: Scanner {
                         start: 0,
-                        current: 4,
+                        current: 12,
                         line: 1
                     }
                 },
                 Token {
-                    ttype: TokenType::Attribute(AttributeType::AttackPercent),
-                    text: "+120",
+                    ttype: TokenType::Logic(LogicType::And),
+                    text: "and",
+                    metadata: Scanner {
+                        start: 13,
+                        current: 16,
+                        line: 1
+                    }
+                },
+                Token {
+                    ttype: TokenType::Attribute(AttributeType::AttackPercent(Some(120.0))),
+                    text: "+120% attack",
                     metadata: Scanner {
                         start: 17,
-                        current: 21,
+                        current: 29,
                         line: 1
                     }
                 },
@@ -527,44 +550,6 @@ mod test {
     }
 
     #[test]
-    fn test_tokenize_sign_numeric_attr() {
-        let valid_attr_num = SAPEffect::new(None, "+13 health and +12 attack");
-        let tokens = valid_attr_num.tokenize().unwrap();
-        assert_eq!(
-            tokens,
-            vec![
-                Token {
-                    ttype: TokenType::Attribute(AttributeType::Health),
-                    text: "+13",
-                    metadata: Scanner {
-                        start: 0,
-                        current: 3,
-                        line: 1
-                    }
-                },
-                Token {
-                    ttype: TokenType::Attribute(AttributeType::Attack),
-                    text: "+12",
-                    metadata: Scanner {
-                        start: 15,
-                        current: 18,
-                        line: 1
-                    }
-                },
-                Token {
-                    ttype: TokenType::End,
-                    text: "",
-                    metadata: Scanner {
-                        start: 25,
-                        current: 25,
-                        line: 1
-                    }
-                }
-            ]
-        )
-    }
-
-    #[test]
     fn test_tokenize_numeric_attr() {
         let valid_attr_num = SAPEffect::new(None, "1-gold");
         let tokens = valid_attr_num.tokenize().unwrap();
@@ -573,11 +558,11 @@ mod test {
             tokens,
             vec![
                 Token {
-                    ttype: TokenType::Attribute(AttributeType::Gold),
-                    text: "1",
+                    ttype: TokenType::Attribute(AttributeType::Gold(Some(1))),
+                    text: "1-gold",
                     metadata: Scanner {
                         start: 0,
-                        current: 1,
+                        current: 6,
                         line: 1
                     }
                 },
@@ -608,7 +593,7 @@ mod test {
             tokens,
             vec![
                 Token {
-                    ttype: TokenType::Attribute(AttributeType::Attack),
+                    ttype: TokenType::Attribute(AttributeType::Attack(Some(12))),
                     text: "12",
                     metadata: Scanner {
                         start: 0,
@@ -617,7 +602,7 @@ mod test {
                     }
                 },
                 Token {
-                    ttype: TokenType::Attribute(AttributeType::Health),
+                    ttype: TokenType::Attribute(AttributeType::Health(Some(13))),
                     text: "13",
                     metadata: Scanner {
                         start: 3,

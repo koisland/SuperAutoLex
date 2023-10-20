@@ -12,6 +12,9 @@ readme = "README.md"
 edition = "2021"
 license = "MIT"
 
+[dev-dependencies]
+pretty_assertions = "1.4.0"
+
 [dependencies]
 anyhow = "1.0.75"
 

@@ -31,15 +31,34 @@ pub enum ActionType {
     Transform,
     Replace,
     Shuffle,
+    Freeze,
     Unfreeze,
 
     // Non-Effect
     Attack,
     Eat,
     Buy,
+    Sell,
     Upgrade,
     Hurt,
-    Sold,
+    Faint,
+}
+
+impl ActionType {
+    pub(crate) fn is_shop_related(&self) -> bool {
+        matches!(
+            self,
+            Self::Spend
+                | Self::Stock
+                | Self::Discount
+                | Self::Freeze
+                | Self::Unfreeze
+                | Self::Eat
+                | Self::Buy
+                | Self::Sell
+                | Self::Upgrade
+        )
+    }
 }
 
 impl FromStr for ActionType {
@@ -49,14 +68,14 @@ impl FromStr for ActionType {
         Ok(match s {
             "choose" => ActionType::Choose,
             "deal" => ActionType::Deal,
-            "gain" => ActionType::Gain,
+            "gain" | "gained" => ActionType::Gain,
             "give" => ActionType::Give,
-            "push" => ActionType::Push,
+            "push" | "pushed" => ActionType::Push,
             "remove" => ActionType::Remove,
             "set" => ActionType::Set,
             "spend" => ActionType::Spend,
             "stock" => ActionType::Stock,
-            "summon" => ActionType::Summon,
+            "summon" | "summoned" => ActionType::Summon,
             "swap" => ActionType::Swap,
             "break" | "broke" => ActionType::Break,
             "copy" => ActionType::Copy,
@@ -74,13 +93,15 @@ impl FromStr for ActionType {
             "transform" => ActionType::Transform,
             "replace" => ActionType::Replace,
             "shuffle" => ActionType::Shuffle,
+            "freeze" => ActionType::Freeze,
             "unfreeze" => ActionType::Unfreeze,
             "attack" | "attacks" => ActionType::Attack,
             "eat" | "eats" => ActionType::Eat,
-            "buy" => ActionType::Buy,
+            "buy" | "bought " => ActionType::Buy,
             "upgrade" => ActionType::Upgrade,
             "hurt" => ActionType::Hurt,
-            "sold" => ActionType::Sold,
+            "sell" | "sold" => ActionType::Sell,
+            "faint" => ActionType::Faint,
             _ => bail!("Unknown action. {s}"),
         })
     }

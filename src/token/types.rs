@@ -3,14 +3,14 @@ use std::str::FromStr;
 use anyhow::bail;
 
 use super::{
-    actions::ActionType, attribute::AttributeType, logic::LogicType, numeric::NumericType,
+    actions::ActionType, attribute::EntityType, logic::LogicType, numeric::NumericType,
     position::PositionType, target::TargetType, ParseNumber,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum TokenType {
     Numeric(NumericType),
-    Attribute(AttributeType),
+    Entity(EntityType),
     End,
     Position(PositionType),
     Target(TargetType),
@@ -34,12 +34,12 @@ impl TokenType {
     /// * Errors if cannot convert value to a [`TokenType`] variant.
     pub fn parse(ttype_str: &str, literal_str: Option<&str>) -> anyhow::Result<TokenType> {
         Ok(
-            if let Ok(mut attr_type) = AttributeType::from_str(ttype_str) {
+            if let Ok(mut entity_type) = EntityType::from_str(ttype_str) {
                 // Add number to attribute if provided.
                 if let Some(literal_str) = literal_str {
-                    attr_type.parse_num_str(literal_str)?;
+                    entity_type.parse_num_str(literal_str)?;
                 };
-                TokenType::Attribute(attr_type)
+                TokenType::Entity(entity_type)
             } else if let Ok(pos_type) = PositionType::from_str(ttype_str) {
                 TokenType::Position(pos_type)
             } else if let Ok(mut num_type) = NumericType::from_str(ttype_str) {

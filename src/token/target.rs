@@ -2,11 +2,9 @@ use std::str::FromStr;
 
 use anyhow::bail;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum TargetType {
-    Pet,
-    Food,
-    Perk,
+    #[default]
     Friend,
     Enemy,
     Shop,
@@ -17,9 +15,6 @@ impl FromStr for TargetType {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Ok(match s {
-            "pet" | "pets" => TargetType::Pet,
-            "food" | "foods" => TargetType::Food,
-            "perk" | "perks" => TargetType::Perk,
             "enemy" | "enemies" => TargetType::Enemy,
             "friend" | "friends" | "friendly" => TargetType::Friend,
             "shop" => TargetType::Shop,

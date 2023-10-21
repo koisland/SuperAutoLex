@@ -32,7 +32,7 @@ impl FromStr for PositionType {
             "highest" => PositionType::Highest,
             "lowest" => PositionType::Lowest,
             "left-most" => PositionType::LeftMost,
-            "right-most" => PositionType::RightMost,
+            "right-most" | "front" => PositionType::RightMost,
             "directly back" | "whoever" | "it" => PositionType::Trigger,
             _ => bail!("{s} not a valid PositionType"),
         })

@@ -38,10 +38,10 @@ impl ParseNumber for NumericType {
         Self: Sized,
     {
         match self {
-            NumericType::Number(v) | NumericType::Multiplier(v) => {
+            NumericType::Number(ref mut v) | NumericType::Multiplier(ref mut v) => {
                 v.replace(num_str.parse()?);
             }
-            NumericType::Percent(v) => {
+            NumericType::Percent(ref mut v) => {
                 v.replace(num_str.parse()?);
             }
             NumericType::Sum => todo!(),

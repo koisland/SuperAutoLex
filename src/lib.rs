@@ -1,13 +1,14 @@
 // https://craftinginterpreters.com/scanning.html
 
-use std::fmt::Display;
-
+pub mod effect;
+pub mod scanner;
 pub mod token;
 
 use anyhow::{bail, Context};
+use scanner::Scanner;
 use token::{
-    attribute::AttributeType, logic::LogicType, numeric::NumericType, target::TargetType,
-    types::TokenType, Token,
+    attribute::EntityType, logic::LogicType, numeric::NumericType, types::TokenType, SAPTokens,
+    Token,
 };
 
 #[deny(missing_docs)]
@@ -23,88 +24,25 @@ fn is_alpha(chr: Option<char>) -> Option<char> {
     chr.filter(|chr| chr.is_alphabetic() || *chr == '\'')
 }
 
-/// [`SAPEffect`] parser state.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Scanner {
-    /// Start character index of lexeme.
-    pub start: usize,
-    /// Current character index of lexeme.
-    pub current: usize,
-    /// Current line.
-    pub line: usize,
-}
-
-impl Scanner {
-    /// Move [`Scanner::current`] cursor index by some amount.
-    ///
-    /// ### Params
-    /// * `curr`
-    ///     * If `true`, current cursor. Otherwise, start cursor.
-    /// * `by`
-    ///     * Amount to move cursor by.
-    ///     * If negative, will perform saturating sub.
-    ///
-    /// ### Returns
-    /// * Instance
-    fn move_cursor(&mut self, curr: bool, by: isize) -> &mut Self {
-        let cursor = if curr {
-            &mut self.current
-        } else {
-            &mut self.start
-        };
-        if by.is_negative() {
-            *cursor = cursor.saturating_sub(-by as usize);
-        } else {
-            *cursor += by as usize;
-        }
-        self
-    }
-
-    /// Set [`Scanner::start`] to [`Scanner::current`].
-    fn set_start_to_current(&mut self) -> &mut Self {
-        self.start = self.current;
-        self
-    }
-}
-
-impl Display for Scanner {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Line {} ({}-{})", self.line, self.start, self.current)
-    }
-}
-
-impl Default for Scanner {
-    fn default() -> Self {
-        Self {
-            start: Default::default(),
-            current: Default::default(),
-            line: 1,
-        }
-    }
-}
-
 #[derive(Default)]
-pub struct SAPEffect<'src> {
-    /// Effect.
+pub struct SAPText<'src> {
+    /// Raw text.
     pub effect: &'src str,
-    /// Lower-case effect.
+    /// Lower-case text.
     lowercase_effect: String,
-    /// Parsed trigger from effect text.
-    trigger: Option<&'src str>,
 }
 
-impl<'src> SAPEffect<'src> {
+impl<'src> SAPText<'src> {
     /// Create SAP effect.
-    pub fn new(trigger: Option<&'src str>, effect: &'src str) -> SAPEffect<'src> {
+    pub fn new(effect: &'src str) -> SAPText<'src> {
         // Store a lowercase version of effect for case-insensitive token matching.
-        SAPEffect {
+        SAPText {
             effect,
             lowercase_effect: effect.to_ascii_lowercase(),
-            trigger,
         }
     }
 
-    pub fn tokenize(&'src self) -> anyhow::Result<Vec<Token<'src>>> {
+    pub fn tokenize(&'src self) -> anyhow::Result<SAPTokens<'src>> {
         let mut tokens = vec![];
         let mut state = Scanner::default();
 
@@ -121,7 +59,7 @@ impl<'src> SAPEffect<'src> {
             text: "",
             metadata: state,
         });
-        Ok(tokens)
+        Ok(SAPTokens(tokens))
     }
 
     fn scan_token(
@@ -204,9 +142,9 @@ impl<'src> SAPEffect<'src> {
                             == Some(&TokenType::Logic(LogicType::With));
 
                     let ttype = if is_prev_word_food_related {
-                        TokenType::Target(TargetType::Food)
+                        TokenType::Entity(EntityType::Food(None))
                     } else if is_prev_word_uppercase {
-                        TokenType::Target(TargetType::Pet)
+                        TokenType::Entity(EntityType::Pet(None))
                     } else {
                         // Not an item we scanned.
                         // Convert to token (if possible), add, and break from loop.
@@ -271,7 +209,7 @@ impl<'src> SAPEffect<'src> {
             Some('%') => {
                 let mut token =
                     self.consume_while_cond(state, Some(num_literal_state), 2, is_alpha)?;
-                if let TokenType::Attribute(ref mut attr_type) = token.ttype {
+                if let TokenType::Entity(ref mut attr_type) = token.ttype {
                     *attr_type = attr_type.into_percent_variant()?;
                 }
                 tokens.push(token)
@@ -300,7 +238,7 @@ impl<'src> SAPEffect<'src> {
             Some('/') => {
                 tokens.push(self.build_token(
                     state,
-                    TokenType::Attribute(AttributeType::Attack(Some(
+                    TokenType::Entity(EntityType::Attack(Some(
                         self.get_text(&num_literal_state, false)?.parse()?,
                     ))),
                 )?);
@@ -309,7 +247,7 @@ impl<'src> SAPEffect<'src> {
                 // Change so is correctly labeled health.
                 let mut health_token = self.consume_while_cond(state, None, 1, is_digit)?;
                 health_token.ttype =
-                    TokenType::Attribute(AttributeType::Health(Some(health_token.text.parse()?)));
+                    TokenType::Entity(EntityType::Health(Some(health_token.text.parse()?)));
                 tokens.push(health_token)
             }
             // ex. 1 attack
@@ -330,7 +268,7 @@ impl<'src> SAPEffect<'src> {
         Ok(())
     }
 
-    /// Peek at index character without advancing `SAPEffect`.
+    /// Peek at index character without advancing `SAPText`.
     /// * Note: This will use the raw effect source and not the lowercase version.
     fn peek(&self, idx: usize) -> Option<char> {
         self.effect
@@ -340,7 +278,7 @@ impl<'src> SAPEffect<'src> {
             .map(|byte| *byte as char)
     }
 
-    /// Consume characters in [`SAPEffect`] [`Scanner`] building a [`Token`] while the provided condition is valid.
+    /// Consume characters in [`SAPText`] [`Scanner`] building a [`Token`] while the provided condition is valid.
     ///
     /// ### Params
     /// * `state`
@@ -413,11 +351,11 @@ impl<'src> SAPEffect<'src> {
         }
     }
 
-    /// Conditional [`SAPEffect::advance`].
+    /// Conditional [`SAPText::advance`].
     ///
     /// ### Params
     /// * `state`
-    ///     * Current state of [`SAPEffect`].
+    ///     * Current state of [`SAPText`].
     /// * `pass_cond`
     ///     * Closure taking the next character and return an optional char.
     ///     * Passes if [`Option::Some`] and increments `state.current` char position.
@@ -447,11 +385,11 @@ mod test {
 
     #[test]
     fn test_tokenize_sign_numeric_attr() {
-        let effect = SAPEffect::new(None, "Gain +3 attack and +2 health.");
+        let effect = SAPText::new("Gain +3 attack and +2 health.");
         let tokens = effect.tokenize().unwrap();
 
         assert_eq!(
-            tokens,
+            *tokens,
             vec![
                 Token {
                     ttype: TokenType::Action(ActionType::Gain),
@@ -463,7 +401,7 @@ mod test {
                     }
                 },
                 Token {
-                    ttype: TokenType::Attribute(AttributeType::Attack(Some(3))),
+                    ttype: TokenType::Entity(EntityType::Attack(Some(3))),
                     text: "+3 attack",
                     metadata: Scanner {
                         start: 5,
@@ -481,7 +419,7 @@ mod test {
                     }
                 },
                 Token {
-                    ttype: TokenType::Attribute(AttributeType::Health(Some(2))),
+                    ttype: TokenType::Entity(EntityType::Health(Some(2))),
                     text: "+2 health",
                     metadata: Scanner {
                         start: 19,
@@ -503,14 +441,14 @@ mod test {
     }
     #[test]
     fn test_tokenize_sign_numeric_perc_attr() {
-        let valid_attr_num = SAPEffect::new(None, "+100% health and +120% attack");
+        let valid_attr_num = SAPText::new("+100% health and +120% attack");
         let tokens = valid_attr_num.tokenize().unwrap();
 
         assert_eq!(
-            tokens,
+            *tokens,
             vec![
                 Token {
-                    ttype: TokenType::Attribute(AttributeType::HealthPercent(Some(100.0))),
+                    ttype: TokenType::Entity(EntityType::HealthPercent(Some(100.0))),
                     text: "+100% health",
                     metadata: Scanner {
                         start: 0,
@@ -528,7 +466,7 @@ mod test {
                     }
                 },
                 Token {
-                    ttype: TokenType::Attribute(AttributeType::AttackPercent(Some(120.0))),
+                    ttype: TokenType::Entity(EntityType::AttackPercent(Some(120.0))),
                     text: "+120% attack",
                     metadata: Scanner {
                         start: 17,
@@ -551,14 +489,14 @@ mod test {
 
     #[test]
     fn test_tokenize_numeric_attr() {
-        let valid_attr_num = SAPEffect::new(None, "1-gold");
+        let valid_attr_num = SAPText::new("1-gold");
         let tokens = valid_attr_num.tokenize().unwrap();
 
         assert_eq!(
-            tokens,
+            *tokens,
             vec![
                 Token {
-                    ttype: TokenType::Attribute(AttributeType::Gold(Some(1))),
+                    ttype: TokenType::Entity(EntityType::Gold(Some(1))),
                     text: "1-gold",
                     metadata: Scanner {
                         start: 0,
@@ -581,19 +519,19 @@ mod test {
 
     #[test]
     fn test_tokenize_numeric_summon_stats() {
-        let valid_summon_stats = SAPEffect::new(None, "12/13");
-        let invalid_summon_stats_health_missing = SAPEffect::new(None, "12/");
-        let invalid_summon_stats_health_nondigit = SAPEffect::new(None, "12/a");
+        let valid_summon_stats = SAPText::new("12/13");
+        let invalid_summon_stats_health_missing = SAPText::new("12/");
+        let invalid_summon_stats_health_nondigit = SAPText::new("12/a");
 
         assert!(invalid_summon_stats_health_missing.tokenize().is_err());
         assert!(invalid_summon_stats_health_nondigit.tokenize().is_err());
 
         let tokens = valid_summon_stats.tokenize().unwrap();
         assert_eq!(
-            tokens,
+            *tokens,
             vec![
                 Token {
-                    ttype: TokenType::Attribute(AttributeType::Attack(Some(12))),
+                    ttype: TokenType::Entity(EntityType::Attack(Some(12))),
                     text: "12",
                     metadata: Scanner {
                         start: 0,
@@ -602,7 +540,7 @@ mod test {
                     }
                 },
                 Token {
-                    ttype: TokenType::Attribute(AttributeType::Health(Some(13))),
+                    ttype: TokenType::Entity(EntityType::Health(Some(13))),
                     text: "13",
                     metadata: Scanner {
                         start: 3,

@@ -1,4 +1,4 @@
-use std::fmt::Display;
+use std::{fmt::Display, ops::Deref};
 
 use crate::Scanner;
 
@@ -34,4 +34,15 @@ pub trait ParseNumber {
     fn parse_num_str(&mut self, num_str: &str) -> anyhow::Result<&mut Self>
     where
         Self: Sized;
+}
+
+#[derive(Debug, PartialEq)]
+pub struct SAPTokens<'src>(pub Vec<Token<'src>>);
+
+impl<'src> Deref for SAPTokens<'src> {
+    type Target = [Token<'src>];
+
+    fn deref(&self) -> &Self::Target {
+        self.0.as_slice()
+    }
 }

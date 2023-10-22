@@ -18,7 +18,6 @@ pub enum ActionType {
     Break,
     Copy,
     Make,
-    Friend,
     Increase,
     Resummon,
     Steal,
@@ -80,7 +79,6 @@ impl FromStr for ActionType {
             "break" | "broke" => ActionType::Break,
             "copy" => ActionType::Copy,
             "make" => ActionType::Make,
-            "friend" => ActionType::Friend,
             "increase" => ActionType::Increase,
             "resummon" => ActionType::Resummon,
             "steal" => ActionType::Steal,
@@ -101,7 +99,7 @@ impl FromStr for ActionType {
             "upgrade" => ActionType::Upgrade,
             "hurt" => ActionType::Hurt,
             "sell" | "sold" => ActionType::Sell,
-            "faint" => ActionType::Faint,
+            "faint" | "faints" => ActionType::Faint,
             _ => bail!("Unknown action. {s}"),
         })
     }

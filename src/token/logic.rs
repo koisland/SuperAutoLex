@@ -18,6 +18,8 @@ pub enum LogicType {
     GreaterEqual,
     UpTo,
     With,
+    Works,
+    For,
     ForEach,
 }
 
@@ -32,12 +34,16 @@ impl FromStr for LogicType {
             "or" => LogicType::Or,
             "start" => LogicType::Start,
             "end" => LogicType::End,
+            "lower" => LogicType::LessEqual,
             "equal" => LogicType::Equal,
+            "greater" => LogicType::GreaterEqual,
             "up to" => LogicType::UpTo,
             "with" => LogicType::With,
+            "for" => LogicType::For,
             "for each" => LogicType::ForEach,
             "before" => LogicType::Before,
             "after" => LogicType::After,
+            "works" => LogicType::Works,
             _ => bail!("Not a valid LogicType. {s}"),
         })
     }

@@ -3,12 +3,13 @@
 pub mod effect;
 pub mod scanner;
 pub mod token;
+pub mod trigger;
 
 use anyhow::{bail, Context};
 use scanner::Scanner;
 use token::{
-    attribute::EntityType, logic::LogicType, numeric::NumericType, types::TokenType, SAPTokens,
-    Token,
+    attribute::EntityType, logic::LogicType, numeric::NumericType, types::TokenType, ParseNumber,
+    SAPTokens, Token,
 };
 
 #[deny(missing_docs)]
@@ -121,7 +122,7 @@ impl<'src> SAPText<'src> {
             // ex. If item is Apple, ...
             (Some(' ') | Some('.') | Some(','), true) => {
                 loop {
-                    state.move_cursor(true, 1);
+                    state.move_cursor(true, 1).set_start_to_current();
 
                     let prev_curr = state.current;
                     // Consume word. Stop on non-alphabetic char.
@@ -160,14 +161,33 @@ impl<'src> SAPText<'src> {
             }
             // ex. Loyal-Lizard
             (Some(_), true) => {
-                bail!("Unknown item name word delimiter. {next_chr:?}")
+                bail!("{state} Unknown item name word delimiter. {next_chr:?}")
             }
             // Otherwise, just create current token.
             // ex. attack
             (Some(' '), false) => {
                 let word = self.get_text(state, true)?;
-                if let Ok(ttype) = TokenType::parse(word, None) {
-                    tokens.push(self.build_token(state, ttype)?);
+                let ttype = TokenType::parse(word, None);
+
+                let prev_curr = state.current;
+                while self.advance_by_cond(state, is_digit).is_some() {}
+                let digit_str = self
+                    .lowercase_effect
+                    .get(prev_curr..state.current)
+                    .context("Invalid indices.")?;
+
+                match ttype {
+                    // If is entity type token, try to add next digit.
+                    Ok(TokenType::Entity(mut entity_type)) => {
+                        let _ = entity_type.parse_num_str(digit_str);
+                        tokens.push(self.build_token(state, TokenType::Entity(entity_type))?);
+                    }
+                    // Otherwise, add new token.
+                    Ok(ttype) => {
+                        tokens.push(self.build_token(state, ttype)?);
+                    }
+                    // Invalid token type. Ignore.
+                    _ => {}
                 }
             }
             (Some(_), false) | (None, _) => {
@@ -253,8 +273,19 @@ impl<'src> SAPText<'src> {
             // ex. 1 attack
             // ex. 1-gold
             Some(' ') | Some('-') => {
-                let token = self.consume_while_cond(state, Some(num_literal_state), 1, is_alpha)?;
-                tokens.push(token)
+                let num_literal_token = self.build_token(
+                    &num_literal_state,
+                    TokenType::Numeric(NumericType::Number(Some(
+                        self.get_text(&num_literal_state, false)?.parse()?,
+                    ))),
+                )?;
+                let next_token =
+                    self.consume_while_cond(state, Some(num_literal_state), 1, is_alpha)?;
+                // Only add token if next token related to entities.
+                match next_token.ttype {
+                    TokenType::Numeric(_) | TokenType::Entity(_) => tokens.push(next_token),
+                    _ => tokens.push(num_literal_token),
+                }
             }
             // Ignore everything else and just add number.
             Some(_) | None => tokens.push(self.build_token(

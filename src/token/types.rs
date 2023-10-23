@@ -7,10 +7,10 @@ use super::{
     position::PositionType, target::TargetType, ParseNumber,
 };
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum TokenType {
+#[derive(Debug, Clone, PartialEq)]
+pub enum TokenType<'src> {
     Numeric(NumericType),
-    Entity(EntityType),
+    Entity(EntityType<'src>),
     End,
     Position(PositionType),
     Target(TargetType),
@@ -18,7 +18,7 @@ pub enum TokenType {
     Action(ActionType),
 }
 
-impl TokenType {
+impl<'src> TokenType<'src> {
     /// Parse text into a [`TokenType`].
     ///
     /// ### Params
@@ -32,7 +32,7 @@ impl TokenType {
     /// ### Returns
     /// * Parsed [`TokenType`]
     /// * Errors if cannot convert value to a [`TokenType`] variant.
-    pub fn parse(ttype_str: &str, literal_str: Option<&str>) -> anyhow::Result<TokenType> {
+    pub fn parse(ttype_str: &str, literal_str: Option<&str>) -> anyhow::Result<TokenType<'src>> {
         Ok(
             if let Ok(mut entity_type) = EntityType::from_str(ttype_str) {
                 // Add number to attribute if provided.

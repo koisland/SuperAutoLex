@@ -8,6 +8,7 @@ pub enum PositionType {
     OnSelf,
     Ahead,
     Behind,
+    Nearest,
     Adjacent,
     All,
     Any,
@@ -16,6 +17,10 @@ pub enum PositionType {
     LeftMost,
     RightMost,
     Trigger,
+    Illest,
+    Healthiest,
+    Strongest,
+    Weakest,
 }
 
 impl FromStr for PositionType {
@@ -23,10 +28,11 @@ impl FromStr for PositionType {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Ok(match s {
-            "this" => PositionType::OnSelf,
+            "this" | "itself" => PositionType::OnSelf,
             "ahead" => PositionType::Ahead,
             "behind" => PositionType::Behind,
             "adjacent" => PositionType::Adjacent,
+            "nearest" => PositionType::Nearest,
             "all" => PositionType::All,
             "random" | "any" => PositionType::Any,
             "highest" => PositionType::Highest,
@@ -34,6 +40,9 @@ impl FromStr for PositionType {
             "left-most" => PositionType::LeftMost,
             "right-most" | "front" => PositionType::RightMost,
             "directly back" | "whoever" | "it" => PositionType::Trigger,
+            "most healthy" => PositionType::Healthiest,
+            "strongest" => PositionType::Strongest,
+            "weakest" => PositionType::Weakest,
             _ => bail!("{s} not a valid PositionType"),
         })
     }

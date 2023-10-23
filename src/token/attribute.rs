@@ -4,12 +4,21 @@ use anyhow::bail;
 
 use super::ParseNumber;
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum EntityType {
+#[derive(Debug, Clone, PartialEq)]
+pub enum EntityType<'src> {
     // Numerical values.
-    Pet(Option<i32>),
-    Food(Option<i32>),
-    Toy(Option<i32>),
+    Pet {
+        number: Option<i32>,
+        name: Option<&'src str>,
+    },
+    Food {
+        number: Option<i32>,
+        name: Option<&'src str>,
+    },
+    Toy {
+        number: Option<i32>,
+        name: Option<&'src str>,
+    },
     Perk(Option<i32>),
     Ailment(Option<i32>),
 
@@ -36,7 +45,7 @@ pub enum EntityType {
     TrumpetPercent(Option<f32>),
 }
 
-impl EntityType {
+impl<'src> EntityType<'src> {
     pub(crate) fn value(&self) -> Option<i32> {
         match self {
             EntityType::Attack(v)
@@ -47,9 +56,9 @@ impl EntityType {
             | EntityType::Level(v)
             | EntityType::Tier(v)
             | EntityType::Uses(v)
-            | EntityType::Pet(v)
-            | EntityType::Food(v)
-            | EntityType::Toy(v)
+            | EntityType::Pet { number: v, name: _ }
+            | EntityType::Food { number: v, name: _ }
+            | EntityType::Toy { number: v, name: _ }
             | EntityType::Perk(v)
             | EntityType::Ailment(v)
             | EntityType::Space(v)
@@ -65,7 +74,7 @@ impl EntityType {
     }
 }
 
-impl ParseNumber for EntityType {
+impl<'src> ParseNumber for EntityType<'src> {
     fn parse_num_str(&mut self, num_str: &str) -> anyhow::Result<&mut Self> {
         let cleaned_num_str = num_str.trim_start_matches('+');
         match self {
@@ -77,9 +86,18 @@ impl ParseNumber for EntityType {
             | EntityType::Level(ref mut v)
             | EntityType::Tier(ref mut v)
             | EntityType::Uses(ref mut v)
-            | EntityType::Pet(ref mut v)
-            | EntityType::Food(ref mut v)
-            | EntityType::Toy(ref mut v)
+            | EntityType::Pet {
+                number: ref mut v,
+                name: _,
+            }
+            | EntityType::Food {
+                number: ref mut v,
+                name: _,
+            }
+            | EntityType::Toy {
+                number: ref mut v,
+                name: _,
+            }
             | EntityType::Perk(ref mut v)
             | EntityType::Ailment(ref mut v)
             | EntityType::Space(ref mut v)
@@ -101,14 +119,23 @@ impl ParseNumber for EntityType {
     }
 }
 
-impl FromStr for EntityType {
+impl<'src> FromStr for EntityType<'src> {
     type Err = anyhow::Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Ok(match s {
-            "pet" | "pets" => EntityType::Pet(None),
-            "food" | "foods" => EntityType::Food(None),
-            "toy" | "toys" => EntityType::Toy(None),
+            "pet" | "pets" => EntityType::Pet {
+                number: None,
+                name: None,
+            },
+            "food" | "foods" => EntityType::Food {
+                number: None,
+                name: None,
+            },
+            "toy" | "toys" => EntityType::Toy {
+                number: None,
+                name: None,
+            },
             "perk" | "perks" => EntityType::Perk(None),
             "ailment" | "ailments" => EntityType::Ailment(None),
             "turn" | "turns" => EntityType::Turn(None),
@@ -116,7 +143,7 @@ impl FromStr for EntityType {
             "space" => EntityType::Space(None),
             "attack" => EntityType::Attack(None),
             "damage" => EntityType::Damage(None),
-            "health" => EntityType::Health(None),
+            "health" | "healthy" => EntityType::Health(None),
             "gold" => EntityType::Gold(None),
             "trumpet" | "trumpets" => EntityType::Trumpet(None),
             "level" => EntityType::Level(None),
@@ -128,7 +155,7 @@ impl FromStr for EntityType {
     }
 }
 
-impl EntityType {
+impl<'src> EntityType<'src> {
     /// Converts [`EntityType`] variant to a 'percent' labeled variant.
     /// * ex. [`EntityType::Gold`] -> [`EntityType::GoldPercent`]
     pub fn into_percent_variant(self) -> anyhow::Result<Self> {

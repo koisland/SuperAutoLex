@@ -6,13 +6,13 @@ use crate::token::{
 };
 
 #[derive(Debug, Default, PartialEq)]
-pub struct EffectTrigger {
+pub struct EffectTrigger<'src> {
     /// Action
     pub action: Option<ActionType>,
     /// Number of trigger, if any.
     pub number: Option<usize>,
     /// Entity type.
-    pub entity: Option<EntityType>,
+    pub entity: Option<EntityType<'src>>,
     /// The target type.
     pub target: Option<TargetType>,
     /// Logic type.
@@ -21,10 +21,10 @@ pub struct EffectTrigger {
     pub position: Option<PositionType>,
 }
 
-impl<'src> TryFrom<SAPTokens<'src>> for Vec<EffectTrigger> {
+impl<'src> TryFrom<SAPTokens<'src>> for Vec<EffectTrigger<'src>> {
     type Error = anyhow::Error;
 
-    fn try_from(tokens: SAPTokens) -> Result<Self, Self::Error> {
+    fn try_from(tokens: SAPTokens<'src>) -> Result<Self, Self::Error> {
         let mut trigger = EffectTrigger::default();
         let mut triggers = vec![];
         let mut tokens = tokens.iter().peekable();
@@ -34,9 +34,9 @@ impl<'src> TryFrom<SAPTokens<'src>> for Vec<EffectTrigger> {
                 TokenType::Numeric(NumericType::Number(Some(num))) => {
                     trigger.number = Some(num.try_into()?)
                 }
-                TokenType::Entity(entity) => {
-                    trigger.entity = Some(entity);
+                TokenType::Entity(ref entity) => {
                     trigger.number = entity.value().and_then(|val| usize::try_from(val).ok());
+                    trigger.entity = Some(entity.clone());
                 }
                 TokenType::Position(pos) => trigger.position = Some(pos),
                 TokenType::Target(target) => trigger.target = Some(target),
@@ -97,11 +97,8 @@ mod tests {
 
     #[test]
     fn test_interpret_positional_effect_trigger() {
-        let triggers: Vec<EffectTrigger> = SAPText::new("Friend ahead faints")
-            .tokenize()
-            .unwrap()
-            .try_into()
-            .unwrap();
+        let txt = SAPText::new("Friend ahead faints");
+        let triggers: Vec<EffectTrigger> = txt.tokenize().unwrap().try_into().unwrap();
 
         assert_eq!(
             triggers,
@@ -117,11 +114,8 @@ mod tests {
     }
     #[test]
     fn test_interpret_numeric_effect_trigger() {
-        let triggers: Vec<EffectTrigger> = SAPText::new("Two friends faint")
-            .tokenize()
-            .unwrap()
-            .try_into()
-            .unwrap();
+        let binding = SAPText::new("Two friends faint");
+        let triggers: Vec<EffectTrigger> = binding.tokenize().unwrap().try_into().unwrap();
 
         assert_eq!(
             triggers,
@@ -138,16 +132,10 @@ mod tests {
 
     #[test]
     fn test_interpret_multiple_effect_trigger_w_one_action() {
-        let triggers: Vec<EffectTrigger> = SAPText::new("Gain perk or ailment")
-            .tokenize()
-            .unwrap()
-            .try_into()
-            .unwrap();
-        let verbose_triggers: Vec<EffectTrigger> = SAPText::new("Gain perk or gain ailment")
-            .tokenize()
-            .unwrap()
-            .try_into()
-            .unwrap();
+        let txt = SAPText::new("Gain perk or ailment");
+        let triggers: Vec<EffectTrigger> = txt.tokenize().unwrap().try_into().unwrap();
+        let txt = SAPText::new("Gain perk or gain ailment");
+        let verbose_triggers: Vec<EffectTrigger> = txt.tokenize().unwrap().try_into().unwrap();
         let exp_triggers = [
             EffectTrigger {
                 action: Some(ActionType::Gain),
@@ -172,11 +160,8 @@ mod tests {
 
     #[test]
     fn test_interpret_effect_trigger() {
-        let triggers: Vec<EffectTrigger> = SAPText::new("After attack")
-            .tokenize()
-            .unwrap()
-            .try_into()
-            .unwrap();
+        let txt = SAPText::new("After attack");
+        let triggers: Vec<EffectTrigger> = txt.tokenize().unwrap().try_into().unwrap();
 
         assert_eq!(
             triggers,
@@ -193,11 +178,8 @@ mod tests {
 
     #[test]
     fn test_interpret_multiple_effect_trigger() {
-        let triggers: Vec<EffectTrigger> = SAPText::new("After attack or before attack")
-            .tokenize()
-            .unwrap()
-            .try_into()
-            .unwrap();
+        let txt = SAPText::new("After attack or before attack");
+        let triggers: Vec<EffectTrigger> = txt.tokenize().unwrap().try_into().unwrap();
 
         assert_eq!(
             triggers,

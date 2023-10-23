@@ -16,7 +16,7 @@ pub mod types;
 #[derive(Debug, PartialEq)]
 pub struct Token<'src> {
     /// Type of token.
-    pub ttype: TokenType,
+    pub ttype: TokenType<'src>,
     /// Text of token.
     pub text: &'src str,
     /// Token source metadata.

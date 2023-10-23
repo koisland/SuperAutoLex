@@ -12,6 +12,11 @@ pub enum NumericType {
     Sum,
     Plus,
     Minus,
+    LessEqual,
+    Equal,
+    GreaterEqual,
+    Most,
+    Least,
 }
 
 /// Coerces solely string numeric type.
@@ -31,6 +36,11 @@ impl FromStr for NumericType {
             "seven" => NumericType::Number(Some(7)),
             "double" => NumericType::Multiplier(Some(2)),
             "triple" => NumericType::Multiplier(Some(3)),
+            "lower" => NumericType::LessEqual,
+            "equal" => NumericType::Equal,
+            "greater" => NumericType::GreaterEqual,
+            "most" => NumericType::Most,
+            "least" => NumericType::Least,
             _ => bail!("Not a valid numeric type."),
         })
     }
@@ -48,9 +58,14 @@ impl ParseNumber for NumericType {
             NumericType::Percent(ref mut v) => {
                 v.replace(num_str.parse()?);
             }
-            NumericType::Sum => todo!(),
-            NumericType::Plus => todo!(),
-            NumericType::Minus => todo!(),
+            NumericType::Sum
+            | NumericType::Plus
+            | NumericType::Minus
+            | NumericType::LessEqual
+            | NumericType::Equal
+            | NumericType::GreaterEqual
+            | NumericType::Most
+            | NumericType::Least => {}
         }
         Ok(self)
     }

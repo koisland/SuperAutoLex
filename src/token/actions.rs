@@ -84,7 +84,7 @@ impl FromStr for ActionType {
             "steal" => ActionType::Steal,
             "activate" => ActionType::Activate,
             "discount" => ActionType::Discount,
-            "knock" | "knock-out" => ActionType::Knock,
+            "knock" | "knock-out" | "knocked" => ActionType::Knock,
             "reduce" => ActionType::Reduce,
             "swallow" => ActionType::Swallow,
             "take" => ActionType::Take,

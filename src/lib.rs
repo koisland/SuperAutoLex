@@ -107,6 +107,7 @@ impl<'src> SAPText<'src> {
         let prev_chr = state.start.checked_sub(1).and_then(|idx| self.peek(idx));
         let is_itemname = self
             .peek(state.start)
+            // Only item if there's a character before and first char is uppercase.
             .filter(|chr| chr.is_ascii_uppercase() && prev_chr.is_some())
             .is_some();
 
@@ -119,49 +120,86 @@ impl<'src> SAPText<'src> {
             // ex. Loyal Chinchilla
             // ex. Bus with Chili.
             // ex. Fortune Cookie Perk
-            // ex. If item is Apple, ...
-            (Some(' ') | Some('.') | Some(','), true) => {
+            (Some(' '), true) => {
+                let start_of_word = state.start;
+                let mut entity: Option<EntityType> = None;
+
                 loop {
-                    state.move_cursor(true, 1).set_start_to_current();
+                    state.move_cursor(true, 1);
 
                     let prev_curr = state.current;
                     // Consume word. Stop on non-alphabetic char.
                     while self.advance_by_cond(state, is_alpha).is_some() {}
 
                     // Check if perk or capitalized.
-                    let prev_word = self.effect.get(state.start..prev_curr);
-                    let is_prev_word_uppercase = prev_word
+                    let next_word = self
+                        .effect
+                        .get(prev_curr..state.current)
+                        .filter(|word| !word.is_empty());
+                    let is_next_word_uppercase = next_word
                         .map(|word| {
                             word.chars()
                                 .next()
                                 .map_or(false, |chr| chr.is_ascii_uppercase())
                         })
                         .unwrap_or(false);
-                    let is_prev_word_food_related = prev_word == Some("perk")
-                        || prev_word == Some("Perk")
+                    let is_next_word_food_related = next_word == Some("perk")
+                        || next_word == Some("Perk")
                         || tokens.last().map(|token| &token.ttype)
                             == Some(&TokenType::Logic(LogicType::With));
 
-                    let ttype = if is_prev_word_food_related {
-                        TokenType::Entity(EntityType::Food(None))
-                    } else if is_prev_word_uppercase {
-                        TokenType::Entity(EntityType::Pet(None))
-                    } else {
-                        // Not an item we scanned.
-                        // Convert to token (if possible), add, and break from loop.
-                        if let Some(Ok(ttype)) = prev_word.map(|word| TokenType::parse(word, None))
-                        {
-                            tokens.push(self.build_token(state, ttype)?);
+                    // Set entity once.
+                    match (is_next_word_uppercase, is_next_word_food_related) {
+                        (true, true) | (false, true) => {
+                            entity.replace(EntityType::Food {
+                                number: None,
+                                name: None,
+                            });
                         }
+                        (true, false) => {
+                            entity.replace(EntityType::Pet {
+                                number: None,
+                                name: None,
+                            });
+                        }
+                        (false, false) => {
+                            // Reset position to before next word.
+                            state.current = prev_curr - 1;
+                            break;
+                        }
+                    }
+                    if !(is_next_word_uppercase || is_next_word_food_related) {
                         break;
-                    };
-
-                    tokens.push(self.build_token(state, ttype)?);
+                    }
                 }
-            }
-            // ex. Loyal-Lizard
-            (Some(_), true) => {
-                bail!("{state} Unknown item name word delimiter. {next_chr:?}")
+                // Ignore current character as not part of word
+                // state.move_cursor(true, -1);
+                let Some(word) = self.effect.get(start_of_word..state.current) else {
+                    return Ok(());
+                };
+
+                let token = match entity {
+                    Some(
+                        EntityType::Food { ref mut name, .. }
+                        | EntityType::Pet { ref mut name, .. },
+                    ) => {
+                        name.replace(word);
+                        state.start = start_of_word;
+                        // Safe to unwrap as checked some entity.
+                        self.build_token(state, TokenType::Entity(entity.unwrap()))?
+                    }
+                    _ => {
+                        // Try to parse word defaulting to assuming is pet name.
+                        let ttype = TokenType::parse(word, None).unwrap_or(TokenType::Entity(
+                            EntityType::Pet {
+                                number: None,
+                                name: Some(word),
+                            },
+                        ));
+                        self.build_token(state, ttype)?
+                    }
+                };
+                tokens.push(token)
             }
             // Otherwise, just create current token.
             // ex. attack
@@ -169,6 +207,7 @@ impl<'src> SAPText<'src> {
                 let word = self.get_text(state, true)?;
                 let ttype = TokenType::parse(word, None);
 
+                // Consume digits ahead.
                 let prev_curr = state.current;
                 while self.advance_by_cond(state, is_digit).is_some() {}
                 let digit_str = self
@@ -177,7 +216,7 @@ impl<'src> SAPText<'src> {
                     .context("Invalid indices.")?;
 
                 match ttype {
-                    // If is entity type token, try to add next digit.
+                    // If is entity type token, try to add next digit, if any.
                     Ok(TokenType::Entity(mut entity_type)) => {
                         let _ = entity_type.parse_num_str(digit_str);
                         tokens.push(self.build_token(state, TokenType::Entity(entity_type))?);
@@ -190,7 +229,31 @@ impl<'src> SAPText<'src> {
                     _ => {}
                 }
             }
-            (Some(_), false) | (None, _) => {
+            // New item.
+            (Some(_), true) | (None, true) => {
+                let word = self.get_text(state, false).ok();
+                // If LogicType::With prev token type, assume food.
+                let ttype = if matches!(
+                    tokens.last().map(|t| &t.ttype),
+                    Some(TokenType::Logic(LogicType::With))
+                ) {
+                    TokenType::Entity(EntityType::Food {
+                        number: None,
+                        name: word,
+                    })
+                } else {
+                    TokenType::Entity(EntityType::Pet {
+                        number: None,
+                        name: word,
+                    })
+                };
+                tokens.push(self.build_token(state, ttype)?)
+            }
+            // // ex. Loyal-Lizard
+            // (Some(_), true) => {
+            //     bail!("{state} Unknown item name word delimiter. {next_chr:?}")
+            // }
+            (Some(_), false) | (None, false) => {
                 let word = self.get_text(state, true)?;
                 if let Ok(ttype) = TokenType::parse(word, None) {
                     tokens.push(self.build_token(state, ttype)?);
@@ -221,16 +284,23 @@ impl<'src> SAPText<'src> {
             // Raw attribute number.
             // ex. +1 attack
             Some(' ') => {
-                let token = self.consume_while_cond(state, Some(num_literal_state), 1, is_alpha)?;
+                let Some(token) =
+                    self.consume_while_cond(state, Some(num_literal_state), 1, is_alpha)
+                else {
+                    bail!("{state} No attribute after signed numerical characters.")
+                };
                 tokens.push(token)
             }
             // Percentage multiplier.
             // ex. +100% trumpets
             Some('%') => {
-                let mut token =
-                    self.consume_while_cond(state, Some(num_literal_state), 2, is_alpha)?;
+                let Some(mut token) =
+                    self.consume_while_cond(state, Some(num_literal_state), 2, is_alpha)
+                else {
+                    bail!("{state} No attribute after signed numerical characters.")
+                };
                 if let TokenType::Entity(ref mut attr_type) = token.ttype {
-                    *attr_type = attr_type.into_percent_variant()?;
+                    *attr_type = attr_type.clone().into_percent_variant()?;
                 }
                 tokens.push(token)
             }
@@ -252,8 +322,8 @@ impl<'src> SAPText<'src> {
         while self.advance_by_cond(state, is_digit).is_some() {}
 
         let num_literal_state = state.clone();
-
-        match self.peek(state.current) {
+        let next_char = self.peek(state.current);
+        match next_char {
             // ex. 12/12
             Some('/') => {
                 tokens.push(self.build_token(
@@ -265,22 +335,32 @@ impl<'src> SAPText<'src> {
 
                 // Registers as numeric since no attribute text.
                 // Change so is correctly labeled health.
-                let mut health_token = self.consume_while_cond(state, None, 1, is_digit)?;
+                let mut health_token = self
+                    .consume_while_cond(state, None, 1, is_digit)
+                    .with_context(|| format!("{state} No health after summon stats '/'."))?;
                 health_token.ttype =
                     TokenType::Entity(EntityType::Health(Some(health_token.text.parse()?)));
                 tokens.push(health_token)
             }
             // ex. 1 attack
             // ex. 1-gold
-            Some(' ') | Some('-') => {
+            Some(' ') | Some('-') | Some('%') => {
                 let num_literal_token = self.build_token(
                     &num_literal_state,
                     TokenType::Numeric(NumericType::Number(Some(
                         self.get_text(&num_literal_state, false)?.parse()?,
                     ))),
                 )?;
-                let next_token =
-                    self.consume_while_cond(state, Some(num_literal_state), 1, is_alpha)?;
+                // Adjust cursor based on next char.
+                let cur_adj = match next_char.map(|chr| !chr.is_ascii_alphanumeric()) {
+                    Some(true) | None => 1,
+                    Some(false) => 2,
+                };
+                let Some(next_token) =
+                    self.consume_while_cond(state, Some(num_literal_state), cur_adj, is_alpha)
+                else {
+                    return Ok(());
+                };
                 // Only add token if next token related to entities.
                 match next_token.ttype {
                     TokenType::Numeric(_) | TokenType::Entity(_) => tokens.push(next_token),
@@ -330,23 +410,28 @@ impl<'src> SAPText<'src> {
         literal_state: Option<Scanner>,
         cur_adj: isize,
         cond: impl Fn(Option<char>) -> Option<char>,
-    ) -> anyhow::Result<Token<'src>> {
+    ) -> Option<Token<'src>> {
         state.move_cursor(true, cur_adj).set_start_to_current();
 
         // Move cursor while condition is met.
         while self.advance_by_cond(state, &cond).is_some() {}
 
-        let word = self.get_text(state, true)?;
+        let Ok(word) = self.get_text(state, true) else {
+            return None;
+        };
         if let Some(mut updated_literal_state) = literal_state {
-            let literal_value = self.get_text(&updated_literal_state, false)?;
+            let literal_value = self.get_text(&updated_literal_state, false).ok();
             // Use literal state updated so Token text includes both literal value and attribute token.
             updated_literal_state.current = state.current;
-            self.build_token(
-                &updated_literal_state,
-                TokenType::parse(word, Some(literal_value))?,
-            )
+            let Some(ttype) = TokenType::parse(word, literal_value).ok() else {
+                return None;
+            };
+            self.build_token(&updated_literal_state, ttype).ok()
         } else {
-            self.build_token(state, TokenType::parse(word, None)?)
+            let Ok(ttype) = TokenType::parse(word, None) else {
+                return None;
+            };
+            self.build_token(state, ttype).ok()
         }
     }
 
@@ -364,7 +449,7 @@ impl<'src> SAPText<'src> {
         })
     }
 
-    fn build_token(&self, state: &Scanner, ttype: TokenType) -> anyhow::Result<Token> {
+    fn build_token(&'src self, state: &Scanner, ttype: TokenType<'src>) -> anyhow::Result<Token> {
         Ok(Token {
             ttype,
             text: self.get_text(state, false)?,
@@ -413,6 +498,171 @@ mod test {
     use pretty_assertions::assert_eq;
 
     use super::*;
+
+    #[test]
+    fn test_tokenize_three_word_itemname() {
+        let txt = SAPText::new("Gain Fortune Cookie Perk");
+        let tokens = txt.tokenize().unwrap();
+        assert_eq!(
+            *tokens,
+            [
+                Token {
+                    ttype: TokenType::Action(ActionType::Gain),
+                    text: "Gain",
+                    metadata: Scanner {
+                        start: 0,
+                        current: 4,
+                        line: 1
+                    }
+                },
+                Token {
+                    ttype: TokenType::Entity(EntityType::Food {
+                        number: None,
+                        name: Some("Fortune Cookie Perk")
+                    }),
+                    text: "Fortune Cookie Perk",
+                    metadata: Scanner {
+                        start: 5,
+                        current: 24,
+                        line: 1
+                    }
+                },
+                Token {
+                    ttype: TokenType::End,
+                    text: "",
+                    metadata: Scanner {
+                        start: 24,
+                        current: 24,
+                        line: 1
+                    }
+                }
+            ]
+        )
+    }
+
+    #[test]
+    fn test_tokenize_front_itemname() {
+        let invalid_name_at_front = SAPText::new("Beluga Sturgeon");
+        let invalid_name_at_tokens = invalid_name_at_front.tokenize().unwrap();
+        // Names will be mangled if at front. Assumes must have some word before.
+        assert_eq!(
+            *invalid_name_at_tokens,
+            [
+                Token {
+                    ttype: TokenType::Entity(EntityType::Pet {
+                        number: None,
+                        name: Some("Sturgeon")
+                    }),
+                    text: "Sturgeon",
+                    metadata: Scanner {
+                        start: 7,
+                        current: 15,
+                        line: 1
+                    }
+                },
+                Token {
+                    ttype: TokenType::End,
+                    text: "",
+                    metadata: Scanner {
+                        start: 15,
+                        current: 15,
+                        line: 1
+                    }
+                }
+            ]
+        );
+    }
+
+    #[test]
+    fn test_tokenize_pet_with_food_itemname() {
+        // ex. Bus with Chili.
+        let txt = SAPText::new("Summon one 5/5 Bus with Chili.");
+        let tokens = txt.tokenize().unwrap();
+
+        assert_eq!(
+            *tokens,
+            [
+                Token {
+                    ttype: TokenType::Action(ActionType::Summon),
+                    text: "Summon",
+                    metadata: Scanner {
+                        start: 0,
+                        current: 6,
+                        line: 1
+                    }
+                },
+                Token {
+                    ttype: TokenType::Numeric(NumericType::Number(Some(1))),
+                    text: "one",
+                    metadata: Scanner {
+                        start: 7,
+                        current: 10,
+                        line: 1
+                    }
+                },
+                Token {
+                    ttype: TokenType::Entity(EntityType::Attack(Some(5))),
+                    text: "5",
+                    metadata: Scanner {
+                        start: 11,
+                        current: 12,
+                        line: 1
+                    }
+                },
+                Token {
+                    ttype: TokenType::Entity(EntityType::Health(Some(5))),
+                    text: "5",
+                    metadata: Scanner {
+                        start: 13,
+                        current: 14,
+                        line: 1
+                    }
+                },
+                Token {
+                    ttype: TokenType::Entity(EntityType::Pet {
+                        number: None,
+                        name: Some("Bus")
+                    }),
+                    text: "Bus",
+                    metadata: Scanner {
+                        start: 15,
+                        current: 18,
+                        line: 1
+                    }
+                },
+                Token {
+                    ttype: TokenType::Logic(LogicType::With),
+                    text: "with",
+                    metadata: Scanner {
+                        start: 19,
+                        current: 23,
+                        line: 1
+                    }
+                },
+                Token {
+                    ttype: TokenType::Entity(EntityType::Food {
+                        number: None,
+                        name: Some("Chili")
+                    }),
+                    text: "Chili",
+                    metadata: Scanner {
+                        start: 24,
+                        current: 29,
+                        line: 1
+                    }
+                },
+                Token {
+                    ttype: TokenType::End,
+                    text: "",
+                    metadata: Scanner {
+                        start: 30,
+                        current: 30,
+                        line: 1
+                    }
+                }
+            ]
+        );
+    }
 
     #[test]
     fn test_tokenize_sign_numeric_attr() {

@@ -10,7 +10,6 @@ pub mod logic;
 pub mod numeric;
 pub mod position;
 pub mod target;
-pub mod trigger;
 pub mod types;
 
 #[derive(Debug, PartialEq)]

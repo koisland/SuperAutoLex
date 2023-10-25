@@ -11,7 +11,7 @@ use super::{
 pub enum TokenType<'src> {
     Numeric(NumericType),
     Entity(EntityType<'src>),
-    End,
+    EndText,
     Position(PositionType),
     Target(TargetType),
     Logic(LogicType),

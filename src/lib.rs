@@ -8,8 +8,8 @@ pub mod trigger;
 use anyhow::{bail, Context};
 use scanner::Scanner;
 use token::{
-    attribute::EntityType, logic::LogicType, numeric::NumericType, types::TokenType, ParseNumber,
-    SAPTokens, Token,
+    attribute::EntityType, logic::LogicType, numeric::NumericType, position::PositionType,
+    types::TokenType, ParseNumber, SAPTokens, Token,
 };
 
 #[deny(missing_docs)]
@@ -54,9 +54,9 @@ impl<'src> SAPText<'src> {
             };
         }
 
-        // End of statement.
+        // EndText of statement.
         tokens.push(Token {
-            ttype: TokenType::End,
+            ttype: TokenType::EndText,
             text: "",
             metadata: state,
         });
@@ -96,6 +96,25 @@ impl<'src> SAPText<'src> {
 
         // More to do.
         Ok(Some(()))
+    }
+
+    /// Replaces next token if meets condition.
+    fn replace_next_token_if_cond(
+        &'src self,
+        state: &mut Scanner,
+        prev_state: &mut Scanner,
+        filter_fn: impl FnOnce(&Token<'src>) -> bool,
+        replacement_ttype: TokenType<'src>,
+        tokens: &mut Vec<Token<'src>>,
+    ) -> anyhow::Result<()> {
+        let next_alpha_token: Option<Token<'src>> =
+            self.consume_while_cond(state, None, 0, is_alpha);
+        if next_alpha_token.filter(filter_fn).is_some() {
+            prev_state.current = state.current;
+            tokens.push(self.build_token(prev_state, replacement_ttype)?);
+        };
+
+        Ok(())
     }
 
     fn scan_word_token(
@@ -201,35 +220,61 @@ impl<'src> SAPText<'src> {
                 };
                 tokens.push(token)
             }
-            // Otherwise, just create current token.
+            // Non-item name word token.
             // ex. attack
             (Some(' '), false) => {
                 let word = self.get_text(state, true)?;
                 let ttype = TokenType::parse(word, None);
 
-                // Consume digits ahead.
-                let prev_curr = state.current;
-                while self.advance_by_cond(state, is_digit).is_some() {}
-                let digit_str = self
-                    .lowercase_effect
-                    .get(prev_curr..state.current)
-                    .context("Invalid indices.")?;
+                // Consume digits ahead to create numeric token, if anys.
+                let mut prev_state = state.clone();
+                let next_digit_token = self.consume_while_cond(state, None, 1, is_digit);
 
                 match ttype {
                     // If is entity type token, try to add next digit, if any.
                     Ok(TokenType::Entity(mut entity_type)) => {
-                        let _ = entity_type.parse_num_str(digit_str);
-                        tokens.push(self.build_token(state, TokenType::Entity(entity_type))?);
+                        if let Some(digit_token) = &next_digit_token {
+                            prev_state.current = state.current;
+                            let _ = entity_type.parse_num_str(digit_token.text);
+                        }
+                        tokens.push(self.build_token(&prev_state, TokenType::Entity(entity_type))?);
+
+                        // Early return to avoid adding numeric token twice.
+                        return Ok(());
                     }
+                    // ex. "this has"
+                    Ok(TokenType::Position(PositionType::OnSelf)) => self
+                        .replace_next_token_if_cond(
+                            state,
+                            &mut prev_state,
+                            |token| token.ttype == TokenType::Logic(LogicType::Have),
+                            TokenType::Logic(LogicType::Have),
+                            tokens,
+                        )?,
+                    // ex. "for each"
+                    Ok(TokenType::Logic(LogicType::For)) => self.replace_next_token_if_cond(
+                        state,
+                        &mut prev_state,
+                        |token| token.ttype == TokenType::Logic(LogicType::Each),
+                        TokenType::Logic(LogicType::ForEach),
+                        tokens,
+                    )?,
                     // Otherwise, add new token.
                     Ok(ttype) => {
-                        tokens.push(self.build_token(state, ttype)?);
+                        tokens.push(self.build_token(&prev_state, ttype)?);
                     }
                     // Invalid token type. Ignore.
                     _ => {}
                 }
+
+                // Reset state to before next numeric token.
+                // We do this because may need context of next token for numeric token.
+                if next_digit_token.is_some() {
+                    *state = prev_state
+                }
             }
-            // New item.
+            // Itemname at end of punctuation/statement.
+            // ex. Dog with Chili.
             (Some(_), true) | (None, true) => {
                 let word = self.get_text(state, false).ok();
                 // If LogicType::With prev token type, assume food.
@@ -249,10 +294,7 @@ impl<'src> SAPText<'src> {
                 };
                 tokens.push(self.build_token(state, ttype)?)
             }
-            // // ex. Loyal-Lizard
-            // (Some(_), true) => {
-            //     bail!("{state} Unknown item name word delimiter. {next_chr:?}")
-            // }
+            // Any non-itemname word token.
             (Some(_), false) | (None, false) => {
                 let word = self.get_text(state, true)?;
                 if let Ok(ttype) = TokenType::parse(word, None) {
@@ -352,18 +394,25 @@ impl<'src> SAPText<'src> {
                     ))),
                 )?;
                 // Adjust cursor based on next char.
-                let cur_adj = match next_char.map(|chr| !chr.is_ascii_alphanumeric()) {
+                let cur_adj = match next_char.map(|chr| chr.is_whitespace() || chr == '-') {
                     Some(true) | None => 1,
                     Some(false) => 2,
                 };
-                let Some(next_token) =
+                let Some(mut next_token) =
                     self.consume_while_cond(state, Some(num_literal_state), cur_adj, is_alpha)
                 else {
                     return Ok(());
                 };
-                // Only add token if next token related to entities.
-                match next_token.ttype {
-                    TokenType::Numeric(_) | TokenType::Entity(_) => tokens.push(next_token),
+                let is_perc_token = next_char.as_ref().map_or(false, |chr| *chr == '%');
+                match (&mut next_token.ttype, is_perc_token) {
+                    // Try to turn into percent variant if percent next token.
+                    (TokenType::Entity(attr_type), true) => {
+                        *attr_type = attr_type.clone().into_percent_variant()?;
+                        tokens.push(next_token);
+                    }
+                    // Only add num attr token if next token related to entities.
+                    (TokenType::Numeric(_) | TokenType::Entity(_), _) => tokens.push(next_token),
+                    // Otherwise, just add number token.
                     _ => tokens.push(num_literal_token),
                 }
             }
@@ -528,7 +577,7 @@ mod test {
                     }
                 },
                 Token {
-                    ttype: TokenType::End,
+                    ttype: TokenType::EndText,
                     text: "",
                     metadata: Scanner {
                         start: 24,
@@ -561,7 +610,7 @@ mod test {
                     }
                 },
                 Token {
-                    ttype: TokenType::End,
+                    ttype: TokenType::EndText,
                     text: "",
                     metadata: Scanner {
                         start: 15,
@@ -652,7 +701,7 @@ mod test {
                     }
                 },
                 Token {
-                    ttype: TokenType::End,
+                    ttype: TokenType::EndText,
                     text: "",
                     metadata: Scanner {
                         start: 30,
@@ -709,7 +758,7 @@ mod test {
                     }
                 },
                 Token {
-                    ttype: TokenType::End,
+                    ttype: TokenType::EndText,
                     text: "",
                     metadata: Scanner {
                         start: 29,
@@ -756,7 +805,7 @@ mod test {
                     }
                 },
                 Token {
-                    ttype: TokenType::End,
+                    ttype: TokenType::EndText,
                     text: "",
                     metadata: Scanner {
                         start: 29,
@@ -786,7 +835,7 @@ mod test {
                     }
                 },
                 Token {
-                    ttype: TokenType::End,
+                    ttype: TokenType::EndText,
                     text: "",
                     metadata: Scanner {
                         start: 6,
@@ -830,7 +879,7 @@ mod test {
                     }
                 },
                 Token {
-                    ttype: TokenType::End,
+                    ttype: TokenType::EndText,
                     text: "",
                     metadata: Scanner {
                         start: 5,

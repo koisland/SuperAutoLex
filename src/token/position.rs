@@ -6,6 +6,7 @@ use anyhow::bail;
 pub enum PositionType {
     // Positions
     OnSelf,
+    NonSelf,
     Ahead,
     Behind,
     Nearest,
@@ -21,6 +22,7 @@ pub enum PositionType {
     Healthiest,
     Strongest,
     Weakest,
+    Opposite,
 }
 
 impl FromStr for PositionType {
@@ -29,7 +31,8 @@ impl FromStr for PositionType {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Ok(match s {
             "this" | "itself" => PositionType::OnSelf,
-            "ahead" => PositionType::Ahead,
+            "other" | "nonself" => PositionType::NonSelf,
+            "ahead" | "forward" => PositionType::Ahead,
             "behind" => PositionType::Behind,
             "adjacent" => PositionType::Adjacent,
             "nearest" => PositionType::Nearest,
@@ -43,6 +46,7 @@ impl FromStr for PositionType {
             "most healthy" => PositionType::Healthiest,
             "strongest" => PositionType::Strongest,
             "weakest" => PositionType::Weakest,
+            "opposite" => PositionType::Opposite,
             _ => bail!("{s} not a valid PositionType"),
         })
     }

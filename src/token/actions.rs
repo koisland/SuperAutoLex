@@ -99,7 +99,7 @@ impl FromStr for ActionType {
             "upgrade" => ActionType::Upgrade,
             "hurt" => ActionType::Hurt,
             "sell" | "sold" => ActionType::Sell,
-            "faint" | "faints" => ActionType::Faint,
+            "faint" | "faints" | "fainting" => ActionType::Faint,
             _ => bail!("Unknown action. {s}"),
         })
     }

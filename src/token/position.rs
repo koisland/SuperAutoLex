@@ -42,7 +42,7 @@ impl FromStr for PositionType {
             "lowest" => PositionType::Lowest,
             "left-most" => PositionType::LeftMost,
             "right-most" | "front" => PositionType::RightMost,
-            "directly back" | "whoever" | "it" => PositionType::Trigger,
+            "directly back" | "whoever" | "it" | "its" => PositionType::Trigger,
             "most healthy" => PositionType::Healthiest,
             "strongest" => PositionType::Strongest,
             "weakest" => PositionType::Weakest,

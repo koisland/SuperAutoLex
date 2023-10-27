@@ -15,7 +15,7 @@ impl FromStr for TargetType {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Ok(match s {
-            "enemy" | "enemies" => TargetType::Enemy,
+            "enemy" | "enemies" | "opponent" => TargetType::Enemy,
             "friend" | "friends" | "friendly" => TargetType::Friend,
             "shop" => TargetType::Shop,
             _ => bail!("Not a valid numeric type."),

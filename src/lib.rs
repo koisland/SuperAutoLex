@@ -5,6 +5,8 @@ pub mod scanner;
 pub mod token;
 pub mod trigger;
 
+use std::{fmt::Debug, ops::Range, slice::SliceIndex};
+
 use anyhow::{bail, Context};
 use scanner::Scanner;
 use token::{
@@ -142,6 +144,9 @@ impl<'src> SAPText<'src> {
             (Some(' '), true) => {
                 let start_of_word = state.start;
                 let mut entity: Option<EntityType> = None;
+                // Certain pet attributes are capitalized.
+                // ex. "Faint pet" or "Strawberry friend".
+                let mut is_pet_attr = false;
 
                 loop {
                     state.move_cursor(true, 1);
@@ -155,6 +160,7 @@ impl<'src> SAPText<'src> {
                         .effect
                         .get(prev_curr..state.current)
                         .filter(|word| !word.is_empty());
+
                     let is_next_word_uppercase = next_word
                         .map(|word| {
                             word.chars()
@@ -162,13 +168,25 @@ impl<'src> SAPText<'src> {
                                 .map_or(false, |chr| chr.is_ascii_uppercase())
                         })
                         .unwrap_or(false);
+
+                    // Check if pet attr. If true, stop checking.
+                    if !is_pet_attr {
+                        is_pet_attr = next_word == Some("friend")
+                            || next_word == Some("friends")
+                            || next_word == Some("pet");
+                    }
+
+                    // Perks have suffix word "perk"
                     let is_next_word_food_related = next_word == Some("perk")
                         || next_word == Some("Perk")
                         || tokens.last().map(|token| &token.ttype)
                             == Some(&TokenType::Logic(LogicType::With));
 
-                    // Set entity once.
-                    match (is_next_word_uppercase, is_next_word_food_related) {
+                    // Set entity if meet condition.
+                    match (
+                        is_next_word_uppercase || is_pet_attr,
+                        is_next_word_food_related,
+                    ) {
                         (true, true) | (false, true) => {
                             entity.replace(EntityType::Food {
                                 number: None,
@@ -179,8 +197,13 @@ impl<'src> SAPText<'src> {
                             entity.replace(EntityType::Pet {
                                 number: None,
                                 name: None,
+                                // Assign attribute if any.
+                                attr: is_pet_attr.then_some(
+                                    self.get_text_slice(state.start..prev_curr - 1, false)?,
+                                ),
                             });
                         }
+                        // Hit unrelated word.
                         (false, false) => {
                             // Reset position to before next word.
                             state.current = prev_curr - 1;
@@ -191,30 +214,33 @@ impl<'src> SAPText<'src> {
                         break;
                     }
                 }
-                // Ignore current character as not part of word
-                // state.move_cursor(true, -1);
-                let Some(word) = self.effect.get(start_of_word..state.current) else {
-                    return Ok(());
-                };
+                let word = self.get_text_slice(start_of_word..state.current, false)?;
 
                 let token = match entity {
                     Some(
                         EntityType::Food { ref mut name, .. }
                         | EntityType::Pet { ref mut name, .. },
                     ) => {
-                        name.replace(word);
+                        // Only assign name if not a pet attribute.
+                        if !is_pet_attr {
+                            name.replace(word);
+                        }
                         state.start = start_of_word;
                         // Safe to unwrap as checked some entity.
                         self.build_token(state, TokenType::Entity(entity.unwrap()))?
                     }
                     _ => {
+                        // Get lowercase effect for parsing.
+                        let lowercase_word =
+                            self.get_text_slice(start_of_word..state.current, true)?;
                         // Try to parse word defaulting to assuming is pet name.
-                        let ttype = TokenType::parse(word, None).unwrap_or(TokenType::Entity(
-                            EntityType::Pet {
+                        let ttype = TokenType::parse(lowercase_word, None).unwrap_or(
+                            TokenType::Entity(EntityType::Pet {
                                 number: None,
                                 name: Some(word),
-                            },
-                        ));
+                                attr: None,
+                            }),
+                        );
                         self.build_token(state, ttype)?
                     }
                 };
@@ -290,6 +316,7 @@ impl<'src> SAPText<'src> {
                     TokenType::Entity(EntityType::Pet {
                         number: None,
                         name: word,
+                        attr: None,
                     })
                 };
                 tokens.push(self.build_token(state, ttype)?)
@@ -498,6 +525,18 @@ impl<'src> SAPText<'src> {
         })
     }
 
+    fn get_text_slice<I>(&'src self, i: I, lowercase: bool) -> anyhow::Result<&I::Output>
+    where
+        I: SliceIndex<str>,
+    {
+        let source = if lowercase {
+            &self.lowercase_effect
+        } else {
+            self.effect
+        };
+        source.get(i).context("Invalid indices in source text.")
+    }
+
     fn build_token(&'src self, state: &Scanner, ttype: TokenType<'src>) -> anyhow::Result<Token> {
         Ok(Token {
             ttype,
@@ -547,6 +586,76 @@ mod test {
     use pretty_assertions::assert_eq;
 
     use super::*;
+
+    #[test]
+    fn test_tokenize_pet_with_attr() {
+        let txt = SAPText::new("If a random Strawberry pet, gain +2 attack.");
+        let tokens = txt.tokenize().unwrap();
+
+        assert_eq!(
+            *tokens,
+            [
+                Token {
+                    ttype: TokenType::Logic(LogicType::If),
+                    text: "If",
+                    metadata: Scanner {
+                        start: 0,
+                        current: 2,
+                        line: 1
+                    }
+                },
+                Token {
+                    ttype: TokenType::Position(PositionType::Any),
+                    text: "random",
+                    metadata: Scanner {
+                        start: 5,
+                        current: 11,
+                        line: 1
+                    }
+                },
+                Token {
+                    ttype: TokenType::Entity(EntityType::Pet {
+                        number: None,
+                        name: None,
+                        attr: Some("Strawberry")
+                    }),
+                    text: "Strawberry pet",
+                    metadata: Scanner {
+                        start: 12,
+                        current: 26,
+                        line: 1
+                    }
+                },
+                Token {
+                    ttype: TokenType::Action(ActionType::Gain),
+                    text: "gain",
+                    metadata: Scanner {
+                        start: 28,
+                        current: 32,
+                        line: 1
+                    }
+                },
+                Token {
+                    ttype: TokenType::Entity(EntityType::Attack(Some(2))),
+                    text: "+2 attack",
+                    metadata: Scanner {
+                        start: 33,
+                        current: 42,
+                        line: 1
+                    }
+                },
+                Token {
+                    ttype: TokenType::EndText,
+                    text: "",
+                    metadata: Scanner {
+                        start: 43,
+                        current: 43,
+                        line: 1
+                    }
+                }
+            ]
+        )
+    }
 
     #[test]
     fn test_tokenize_three_word_itemname() {
@@ -600,7 +709,8 @@ mod test {
                 Token {
                     ttype: TokenType::Entity(EntityType::Pet {
                         number: None,
-                        name: Some("Sturgeon")
+                        name: Some("Sturgeon"),
+                        attr: None
                     }),
                     text: "Sturgeon",
                     metadata: Scanner {
@@ -670,7 +780,8 @@ mod test {
                 Token {
                     ttype: TokenType::Entity(EntityType::Pet {
                         number: None,
-                        name: Some("Bus")
+                        name: Some("Bus"),
+                        attr: None
                     }),
                     text: "Bus",
                     metadata: Scanner {

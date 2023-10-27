@@ -14,8 +14,6 @@ pub enum LogicType {
     After,
     Then,
     Until,
-    UpTo,
-    Over,
     With,
     Works,
     Have,
@@ -23,6 +21,11 @@ pub enum LogicType {
     Each,
     ForEach,
     Except,
+    // For targets and trumpet effects.
+    To,
+    // In or outside battle.
+    In,
+    Outside,
 }
 
 impl FromStr for LogicType {
@@ -37,8 +40,6 @@ impl FromStr for LogicType {
             "or" => LogicType::Or,
             "start" => LogicType::Start,
             "end" => LogicType::End,
-            "up to" => LogicType::UpTo,
-            "over" => LogicType::Over,
             "with" => LogicType::With,
             "for" => LogicType::For,
             "has" | "have" => LogicType::Have,
@@ -48,6 +49,9 @@ impl FromStr for LogicType {
             "after" => LogicType::After,
             "works" => LogicType::Works,
             "except" => LogicType::Except,
+            "in" => LogicType::In,
+            "to" => LogicType::To,
+            "outside" => LogicType::Outside,
             _ => bail!("Not a valid LogicType. {s}"),
         })
     }

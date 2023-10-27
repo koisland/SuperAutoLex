@@ -203,4 +203,22 @@ mod tests {
             ]
         )
     }
+
+    #[test]
+    fn test_interpret_battle_turn_trigger() {
+        let txt = SAPText::new("Start of battle");
+        let triggers: Vec<EffectTrigger> = txt.tokenize().unwrap().try_into().unwrap();
+
+        assert_eq!(
+            *triggers,
+            [EffectTrigger {
+                action: None,
+                number: None,
+                entity: Some(EntityType::Battle(None)),
+                target: None,
+                logic: Some(LogicType::Start),
+                position: None
+            }]
+        )
+    }
 }

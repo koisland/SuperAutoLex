@@ -10,6 +10,7 @@ pub enum EntityType<'src> {
     Pet {
         number: Option<i32>,
         name: Option<&'src str>,
+        attr: Option<&'src str>,
     },
     Food {
         number: Option<i32>,
@@ -17,6 +18,9 @@ pub enum EntityType<'src> {
     },
     Toy {
         number: Option<i32>,
+        name: Option<&'src str>,
+    },
+    Ability {
         name: Option<&'src str>,
     },
     Perk(Option<i32>),
@@ -56,9 +60,9 @@ impl<'src> EntityType<'src> {
             | EntityType::Level(v)
             | EntityType::Tier(v)
             | EntityType::Uses(v)
-            | EntityType::Pet { number: v, name: _ }
-            | EntityType::Food { number: v, name: _ }
-            | EntityType::Toy { number: v, name: _ }
+            | EntityType::Pet { number: v, .. }
+            | EntityType::Food { number: v, .. }
+            | EntityType::Toy { number: v, .. }
             | EntityType::Perk(v)
             | EntityType::Ailment(v)
             | EntityType::Space(v)
@@ -70,6 +74,7 @@ impl<'src> EntityType<'src> {
             | EntityType::DamagePercent(v)
             | EntityType::GoldPercent(v)
             | EntityType::TrumpetPercent(v) => v.map(|val| val as i32),
+            EntityType::Ability { .. } => None,
         }
     }
 }
@@ -87,16 +92,13 @@ impl<'src> ParseNumber for EntityType<'src> {
             | EntityType::Tier(ref mut v)
             | EntityType::Uses(ref mut v)
             | EntityType::Pet {
-                number: ref mut v,
-                name: _,
+                number: ref mut v, ..
             }
             | EntityType::Food {
-                number: ref mut v,
-                name: _,
+                number: ref mut v, ..
             }
             | EntityType::Toy {
-                number: ref mut v,
-                name: _,
+                number: ref mut v, ..
             }
             | EntityType::Perk(ref mut v)
             | EntityType::Ailment(ref mut v)
@@ -113,6 +115,7 @@ impl<'src> ParseNumber for EntityType<'src> {
             | EntityType::TrumpetPercent(ref mut v) => {
                 v.replace(cleaned_num_str.parse()?);
             }
+            EntityType::Ability { .. } => {}
         }
 
         Ok(self)
@@ -127,6 +130,7 @@ impl<'src> FromStr for EntityType<'src> {
             "pet" | "pets" => EntityType::Pet {
                 number: None,
                 name: None,
+                attr: None,
             },
             "food" | "foods" => EntityType::Food {
                 number: None,
@@ -150,6 +154,7 @@ impl<'src> FromStr for EntityType<'src> {
             "tier" => EntityType::Tier(None),
             "uses" => EntityType::Uses(None),
             "experience" => EntityType::Experience(None),
+            "ability" => EntityType::Ability { name: None },
             _ => bail!("Not a valid EntityType {s}"),
         })
     }

@@ -9,14 +9,14 @@ pub enum NumericType {
     Number(Option<i32>),
     Multiplier(Option<i32>),
     Percent(Option<f32>),
-    Sum,
     Plus,
     Minus,
     LessEqual,
     Equal,
     GreaterEqual,
-    Most,
-    Least,
+    Sum,
+    Max,
+    Min,
 }
 
 /// Coerces solely string numeric type.
@@ -26,7 +26,7 @@ impl FromStr for NumericType {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Ok(match s {
-            "times" => NumericType::Multiplier(None),
+            "time" | "times" => NumericType::Multiplier(None),
             "one" => NumericType::Number(Some(1)),
             "two" => NumericType::Number(Some(2)),
             "three" => NumericType::Number(Some(3)),
@@ -39,8 +39,8 @@ impl FromStr for NumericType {
             "lower" => NumericType::LessEqual,
             "equal" => NumericType::Equal,
             "greater" => NumericType::GreaterEqual,
-            "most" => NumericType::Most,
-            "least" => NumericType::Least,
+            "most" => NumericType::Max,
+            "least" => NumericType::Min,
             _ => bail!("Not a valid numeric type."),
         })
     }
@@ -64,8 +64,8 @@ impl ParseNumber for NumericType {
             | NumericType::LessEqual
             | NumericType::Equal
             | NumericType::GreaterEqual
-            | NumericType::Most
-            | NumericType::Least => {}
+            | NumericType::Max
+            | NumericType::Min => {}
         }
         Ok(self)
     }

@@ -1,21 +1,39 @@
+//! SAP numerical operations/values.
+
 use std::str::FromStr;
 
 use anyhow::bail;
 
 use super::ParseNumber;
 
+/// Numerical operation and value tokens.
+/// - A [`None`] indicates the word itself.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum NumericType {
+    /// A number.
+    /// - ex. `two pets`
     Number(Option<i32>),
+    /// A multiplier
+    /// - ex. `double damage`
     Multiplier(Option<i32>),
+    /// A percent.
+    /// - ex. `300% of attack damage`
     Percent(Option<f32>),
+    /// Plus operator.
     Plus,
+    /// Minus operator.
     Minus,
+    /// Less than or equal.
     LessEqual,
+    /// Equal.
     Equal,
+    /// Greater than or equal.
     GreaterEqual,
+    /// Sum of values.
     Sum,
+    /// Maximum of set of values.
     Max,
+    /// Minimum of set of values.
     Min,
 }
 

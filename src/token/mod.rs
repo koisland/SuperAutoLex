@@ -1,8 +1,8 @@
+//! Token Types
+
 use std::{fmt::Display, ops::Deref};
 
-use crate::Scanner;
-
-use self::types::TokenType;
+use crate::scanner::Scanner;
 
 pub mod actions;
 pub mod attribute;
@@ -12,6 +12,14 @@ pub mod position;
 pub mod target;
 pub mod types;
 
+use self::types::TokenType;
+
+pub use self::{
+    actions::ActionType, attribute::EntityType, logic::LogicType, numeric::NumericType,
+    position::PositionType, target::TargetType,
+};
+
+/// A SAP text token.
 #[derive(Debug, PartialEq)]
 pub struct Token<'src> {
     /// Type of token.
@@ -28,13 +36,15 @@ impl<'src> Display for Token<'src> {
     }
 }
 
-pub trait ParseNumber {
+/// Parse number.
+pub(crate) trait ParseNumber {
     /// Parsed numeric string and modify [`Self`] with it.
     fn parse_num_str(&mut self, num_str: &str) -> anyhow::Result<&mut Self>
     where
         Self: Sized;
 }
 
+/// Wrapper for [`Vec<Token>`].
 #[derive(Debug, PartialEq)]
 pub struct SAPTokens<'src>(pub Vec<Token<'src>>);
 

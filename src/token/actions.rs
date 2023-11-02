@@ -1,7 +1,10 @@
+//! SAP action tokens.
+
 use std::str::FromStr;
 
 use anyhow::bail;
 
+#[allow(missing_docs)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ActionType {
     Choose,
@@ -44,6 +47,7 @@ pub enum ActionType {
 }
 
 impl ActionType {
+    /// Check if shop related.
     pub(crate) fn is_shop_related(&self) -> bool {
         matches!(
             self,

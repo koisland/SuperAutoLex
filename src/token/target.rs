@@ -1,12 +1,18 @@
+//! SAP effect targets.
+
 use std::str::FromStr;
 
 use anyhow::bail;
 
+/// SAP target types.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum TargetType {
+    /// Friendly pets.
     #[default]
     Friend,
+    /// Enemy pets.
     Enemy,
+    /// Shop items.
     Shop,
 }
 

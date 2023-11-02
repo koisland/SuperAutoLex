@@ -1,3 +1,4 @@
+//! SAP token types.
 use std::str::FromStr;
 
 use anyhow::bail;
@@ -7,14 +8,22 @@ use super::{
     position::PositionType, target::TargetType, ParseNumber,
 };
 
+/// All possible SAP token types.
 #[derive(Debug, Clone, PartialEq)]
 pub enum TokenType<'src> {
+    /// Numeric tokens.
     Numeric(NumericType),
+    /// Entity tokens.
     Entity(EntityType<'src>),
+    /// End of text.
     EndText,
+    /// Positional tokens.
     Position(PositionType),
+    /// Target tokens.
     Target(TargetType),
+    /// Logical tokens.
     Logic(LogicType),
+    /// Action tokens.
     Action(ActionType),
 }
 

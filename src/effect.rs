@@ -10,6 +10,8 @@ use crate::{
     trigger::EffectTrigger,
 };
 
+/// A Super Auto Pets effect.
+/// - ex. `Gain +2 attack and +2 health.`
 #[derive(Debug, Default, PartialEq)]
 pub struct Effect<'src> {
     /// Effect trigger.
@@ -31,6 +33,7 @@ pub struct Effect<'src> {
     pub temp: bool,
 }
 
+/// Macro to update `effect` if the effect is related to the maximum or minimum attack/health of something.
 macro_rules! update_effect_max_min_stat_pos {
     ($tokens:ident, $effect:ident, atk = $attack_pos_type:expr, health = $health_pos_type:expr) => {
         // Check next token for most/least health/attack.
@@ -150,6 +153,11 @@ where
     effect_trigger
 }
 impl<'src> Effect<'src> {
+    /// Initialize a new SAP effect.
+    ///
+    /// ### Params
+    /// * `trigger`
+    /// * `tokens`
     fn new(trigger: Option<EffectTrigger>, tokens: &'src SAPTokens) -> anyhow::Result<Vec<Self>> {
         let mut tokens = tokens.iter().peekable();
         let mut effects: Vec<Effect> = vec![];

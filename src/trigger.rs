@@ -5,6 +5,8 @@ use crate::token::{
     position::PositionType, target::TargetType, types::TokenType, SAPTokens,
 };
 
+/// A Super Auto Pets effect trigger.
+/// - ex. `End turn`
 #[derive(Debug, Default, PartialEq)]
 pub struct EffectTrigger<'src> {
     /// Action

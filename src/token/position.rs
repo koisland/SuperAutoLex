@@ -1,27 +1,46 @@
+//! SAP item positions inside/outside of battle.
 use std::str::FromStr;
 
 use anyhow::bail;
 
+/// SAP item positions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PositionType {
-    // Positions
+    /// This pet.
     OnSelf,
+    /// Not this pet.
     NonSelf,
+    /// Ahead of pet.
     Ahead,
+    /// Behind pet.
     Behind,
+    /// Nearest pet relative to current pet.
     Nearest,
+    /// Pets directly one space ahead and behind of current pet.
     Adjacent,
+    /// All items.
     All,
+    /// Any item.
     Any,
+    /// Highest item of some attribute.
     Highest,
+    /// Lowest item of some attribute.
     Lowest,
+    /// Left-most item. This is the last element in the set.
     LeftMost,
+    /// Right-most item. This is the first element in the set.
     RightMost,
+    /// Item causing this effect to trigger.
     Trigger,
+    /// Lowest health pet.
     Illest,
+    /// Highest health pet.
     Healthiest,
+    /// Highest attack pet.
     Strongest,
+    /// Lowest attack pet.
     Weakest,
+    /// Pet directly opposite of this pet.
     Opposite,
 }
 

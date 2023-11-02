@@ -1,55 +1,81 @@
+//! SAP item attribute/entity tokens.
+
 use std::str::FromStr;
 
 use anyhow::bail;
 
 use super::ParseNumber;
 
+/// All possible entity types in Super Auto Pets.
+/// - If [`None`], the entity itself.
+///     - ex. `EntityType::Battle(None)` -> `battle`
 #[derive(Debug, Clone, PartialEq)]
 pub enum EntityType<'src> {
-    // Numerical values.
+    /// Pet.
     Pet {
+        /// Associated number of pets.
         number: Option<i32>,
+        /// Specific pet name.
         name: Option<&'src str>,
+        /// Specific pet attribute.
+        /// - ex. `Strawberry`
         attr: Option<&'src str>,
     },
+    /// Food.
     Food {
+        /// Associated number of foods.
         number: Option<i32>,
+        /// Specific food name.
         name: Option<&'src str>,
     },
-    Toy {
-        number: Option<i32>,
-        name: Option<&'src str>,
-    },
-    Ability {
-        name: Option<&'src str>,
-    },
+    /// Toy entity.
+    Toy(Option<&'src str>),
+    /// Effect ability.
+    Ability(Option<&'src str>),
+    /// Food perk.
     Perk(Option<i32>),
+    /// Ailment.
     Ailment(Option<i32>),
-
+    /// Spaces.
     Space(Option<i32>),
-    /// Phase of battle.
+    /// Phases of battle.
     Battle(Option<i32>),
+    /// Turns.
     Turn(Option<i32>),
-
+    /// Attack.
     Attack(Option<i32>),
+    /// Attack damage.
     Damage(Option<i32>),
+    /// Health.
     Health(Option<i32>),
+    /// Gold.
     Gold(Option<i32>),
+    /// Trumpets.
     Trumpet(Option<i32>),
+    /// Level of item/pet.
     Level(Option<i32>),
+    /// Tier of item/pet.
     Tier(Option<i32>),
+    /// Number of uses.
     Uses(Option<i32>),
+    /// Experience.
     Experience(Option<i32>),
 
-    // Percents
+    /// Attack percent.
     AttackPercent(Option<f32>),
+    /// Health percent.
     HealthPercent(Option<f32>),
+    /// Damage percent.
     DamagePercent(Option<f32>),
+    /// Gold percent.
     GoldPercent(Option<f32>),
+    /// Trumpet percent.
     TrumpetPercent(Option<f32>),
 }
 
 impl<'src> EntityType<'src> {
+    /// Value of inner item, if any.
+    /// * [`f32`] are coerced to [`i32`] which in SAP values shouldn't be an issue.
     pub(crate) fn value(&self) -> Option<i32> {
         match self {
             EntityType::Attack(v)
@@ -62,7 +88,6 @@ impl<'src> EntityType<'src> {
             | EntityType::Uses(v)
             | EntityType::Pet { number: v, .. }
             | EntityType::Food { number: v, .. }
-            | EntityType::Toy { number: v, .. }
             | EntityType::Perk(v)
             | EntityType::Ailment(v)
             | EntityType::Space(v)
@@ -74,7 +99,7 @@ impl<'src> EntityType<'src> {
             | EntityType::DamagePercent(v)
             | EntityType::GoldPercent(v)
             | EntityType::TrumpetPercent(v) => v.map(|val| val as i32),
-            EntityType::Ability { .. } => None,
+            EntityType::Toy(_) | EntityType::Ability { .. } => None,
         }
     }
 }
@@ -97,9 +122,6 @@ impl<'src> ParseNumber for EntityType<'src> {
             | EntityType::Food {
                 number: ref mut v, ..
             }
-            | EntityType::Toy {
-                number: ref mut v, ..
-            }
             | EntityType::Perk(ref mut v)
             | EntityType::Ailment(ref mut v)
             | EntityType::Space(ref mut v)
@@ -115,7 +137,7 @@ impl<'src> ParseNumber for EntityType<'src> {
             | EntityType::TrumpetPercent(ref mut v) => {
                 v.replace(cleaned_num_str.parse()?);
             }
-            EntityType::Ability { .. } => {}
+            EntityType::Toy(_) | EntityType::Ability { .. } => {}
         }
 
         Ok(self)
@@ -136,10 +158,7 @@ impl<'src> FromStr for EntityType<'src> {
                 number: None,
                 name: None,
             },
-            "toy" | "toys" => EntityType::Toy {
-                number: None,
-                name: None,
-            },
+            "toy" | "toys" => EntityType::Toy(None),
             "perk" | "perks" => EntityType::Perk(None),
             "ailment" | "ailments" => EntityType::Ailment(None),
             "turn" | "turns" => EntityType::Turn(None),
@@ -154,7 +173,7 @@ impl<'src> FromStr for EntityType<'src> {
             "tier" => EntityType::Tier(None),
             "uses" => EntityType::Uses(None),
             "experience" => EntityType::Experience(None),
-            "ability" => EntityType::Ability { name: None },
+            "ability" => EntityType::Ability(None),
             _ => bail!("Not a valid EntityType {s}"),
         })
     }

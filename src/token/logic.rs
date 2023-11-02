@@ -1,30 +1,59 @@
+//! SAP logic.
+
 use std::str::FromStr;
 
 use anyhow::bail;
 
+/// Logic related tokens.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LogicType {
+    /// If a condition.
+    /// - ex. `If in battle, ...`
     If,
+    /// Or some other condition.
+    /// - `End of turn or end of battle`
     // If next lexeme is higher or lower switch to GreaterEqual or LessEqual. Otherwise, do nothing.
     Or,
+    /// And
+    ///
     And,
+    /// Start of something.
+    /// - ex. `Start of battle`
     Start,
+    /// End of soemthing.
+    /// - ex. `End turn`
     End,
+    /// Before something.
     Before,
+    /// After something.
     After,
+    /// Indicates second action.
+    /// - ex. `If ... then, ...`
     Then,
+    /// Until something.
     Until,
+    /// With some item.
+    /// - ex. `Deer with Chili`
     With,
+    /// Number of times an effect works.
     Works,
+    /// Condition of having something.
     Have,
+    /// Part of [`LogicType::ForEach`]
     For,
+    /// Part of [`LogicType::ForEach`]
     Each,
+    /// For each of a condition.
+    /// - `..., for each Strawberry friend, ... `
     ForEach,
+    /// Exceptions to an effect.
+    /// - ex. `Except other Tapirs!`
     Except,
-    // For targets and trumpet effects.
+    /// For targets and trumpet effects.
     To,
-    // In or outside battle.
+    /// In battle.
     In,
+    /// Outside of battle.
     Outside,
 }
 

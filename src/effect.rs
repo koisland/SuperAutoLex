@@ -103,7 +103,13 @@ where
                 effect_trigger.number = usize::try_from(*num).ok()
             }
             TokenType::Entity(entity) => effect_trigger.entity = Some(entity.clone()),
-            TokenType::Position(pos) => effect_trigger.position = Some(*pos),
+            TokenType::Position(pos) => {
+                if effect_trigger.prim_pos.is_none() {
+                    effect_trigger.prim_pos = Some(*pos)
+                } else if effect_trigger.sec_pos.is_none() {
+                    effect_trigger.sec_pos = Some(*pos)
+                }
+            }
             TokenType::Target(target) => effect_trigger.target = Some(*target),
             TokenType::Action(action) => effect_trigger.action = Some(*action),
             TokenType::Logic(logic) => effect_trigger.logic = Some(*logic),
@@ -143,7 +149,13 @@ where
                 effect_trigger.number = usize::try_from(*num).ok()
             }
             TokenType::Entity(entity) => effect_trigger.entity = Some(entity.clone()),
-            TokenType::Position(pos) => effect_trigger.position = Some(*pos),
+            TokenType::Position(pos) => {
+                if effect_trigger.prim_pos.is_none() {
+                    effect_trigger.prim_pos = Some(*pos)
+                } else if effect_trigger.sec_pos.is_none() {
+                    effect_trigger.sec_pos = Some(*pos)
+                }
+            }
             TokenType::Target(target) => effect_trigger.target = Some(*target),
             TokenType::Action(action) => effect_trigger.action = Some(*action),
             TokenType::Logic(logic) => effect_trigger.logic = Some(*logic),
@@ -304,12 +316,10 @@ mod test {
             Effect {
                 trigger: None,
                 cond_trigger: Some(EffectTrigger {
-                    action: None,
-                    number: None,
                     entity: Some(EntityType::Level(Some(3))),
                     target: Some(TargetType::Friend),
                     logic: Some(LogicType::Have),
-                    position: None
+                    ..Default::default()
                 }),
                 target: None,
                 entities: vec![EntityType::Attack(Some(1)), EntityType::Health(Some(2))],
@@ -329,7 +339,27 @@ mod test {
         let tokens = effect_txt.tokenize().unwrap();
         let effects = Effect::new(None, &tokens).unwrap();
         assert_eq!(effects.len(), 1);
-        println!("{:?}", effects[0])
+        assert_eq!(
+            effects[0],
+            Effect {
+                trigger: None,
+                cond_trigger: Some(EffectTrigger {
+                    action: None,
+                    number: None,
+                    entity: Some(EntityType::Tier(None)),
+                    target: Some(TargetType::Friend),
+                    logic: Some(LogicType::Is),
+                    prim_pos: Some(PositionType::OnSelf),
+                    sec_pos: Some(PositionType::Highest)
+                }),
+                target: None,
+                entities: vec![EntityType::Attack(Some(1)), EntityType::Health(Some(2))],
+                position: vec![PositionType::OnSelf],
+                action: Some(ActionType::Gain),
+                uses: None,
+                temp: false
+            }
+        )
     }
 
     #[test]

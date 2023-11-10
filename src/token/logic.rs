@@ -10,6 +10,8 @@ pub enum LogicType {
     /// If a condition.
     /// - ex. `If in battle, ...`
     If,
+    /// Subject is.
+    Is,
     /// Or some other condition.
     /// - `End of turn or end of battle`
     // If next lexeme is higher or lower switch to GreaterEqual or LessEqual. Otherwise, do nothing.
@@ -71,8 +73,9 @@ impl FromStr for LogicType {
             "end" => LogicType::End,
             "with" => LogicType::With,
             "for" => LogicType::For,
+            "is" => LogicType::Is,
             "has" | "have" => LogicType::Have,
-            "each" => LogicType::Each,
+            "each" | "every" => LogicType::Each,
             "for each" => LogicType::ForEach,
             "before" => LogicType::Before,
             "after" => LogicType::After,

@@ -19,8 +19,10 @@ pub struct EffectTrigger<'src> {
     pub target: Option<TargetType>,
     /// Logic type.
     pub logic: Option<LogicType>,
-    /// General position on `affected_team`.
-    pub position: Option<PositionType>,
+    /// Primary position on [`EffectTrigger::target`].
+    pub prim_pos: Option<PositionType>,
+    /// Secondary position on [`EffectTrigger::target`]. Used in conjunction with [`EffectTrigger::logic`].
+    pub sec_pos: Option<PositionType>,
 }
 
 impl<'src> TryFrom<SAPTokens<'src>> for Vec<EffectTrigger<'src>> {
@@ -40,7 +42,7 @@ impl<'src> TryFrom<SAPTokens<'src>> for Vec<EffectTrigger<'src>> {
                     trigger.number = entity.value().and_then(|val| usize::try_from(val).ok());
                     trigger.entity = Some(entity.clone());
                 }
-                TokenType::Position(pos) => trigger.position = Some(pos),
+                TokenType::Position(pos) => trigger.prim_pos = Some(pos),
                 TokenType::Target(target) => trigger.target = Some(target),
                 TokenType::Action(action) => {
                     if action.is_shop_related() {
@@ -106,11 +108,9 @@ mod tests {
             triggers,
             [EffectTrigger {
                 action: Some(ActionType::Faint),
-                number: None,
-                entity: None,
                 target: Some(TargetType::Friend),
-                logic: None,
-                position: Some(PositionType::Ahead)
+                prim_pos: Some(PositionType::Ahead),
+                ..Default::default()
             }]
         )
     }
@@ -124,10 +124,8 @@ mod tests {
             [EffectTrigger {
                 action: Some(ActionType::Faint),
                 number: Some(2),
-                entity: None,
                 target: Some(TargetType::Friend),
-                logic: None,
-                position: None
+                ..Default::default()
             }]
         )
     }
@@ -141,19 +139,13 @@ mod tests {
         let exp_triggers = [
             EffectTrigger {
                 action: Some(ActionType::Gain),
-                number: None,
                 entity: Some(EntityType::Perk(None)),
-                target: None,
-                logic: None,
-                position: None,
+                ..Default::default()
             },
             EffectTrigger {
                 action: Some(ActionType::Gain),
-                number: None,
                 entity: Some(EntityType::Ailment(None)),
-                target: None,
-                logic: None,
-                position: None,
+                ..Default::default()
             },
         ];
         assert_eq!(triggers, exp_triggers);
@@ -168,12 +160,9 @@ mod tests {
         assert_eq!(
             triggers,
             [EffectTrigger {
-                action: None,
-                number: None,
                 entity: Some(EntityType::Attack(None)),
-                target: None,
                 logic: Some(LogicType::After),
-                position: None,
+                ..Default::default()
             }]
         )
     }
@@ -187,20 +176,14 @@ mod tests {
             triggers,
             [
                 EffectTrigger {
-                    action: None,
-                    number: None,
                     entity: Some(EntityType::Attack(None)),
-                    target: None,
                     logic: Some(LogicType::After),
-                    position: None,
+                    ..Default::default()
                 },
                 EffectTrigger {
-                    action: None,
-                    number: None,
                     entity: Some(EntityType::Attack(None)),
-                    target: None,
                     logic: Some(LogicType::Before),
-                    position: None,
+                    ..Default::default()
                 }
             ]
         )
@@ -214,12 +197,9 @@ mod tests {
         assert_eq!(
             *triggers,
             [EffectTrigger {
-                action: None,
-                number: None,
                 entity: Some(EntityType::Battle(None)),
-                target: None,
                 logic: Some(LogicType::Start),
-                position: None
+                ..Default::default()
             }]
         )
     }

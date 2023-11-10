@@ -135,23 +135,46 @@ impl<'src> SAPText<'src> {
         Ok(Some(()))
     }
 
-    /// Replaces next token if meets condition.
-    fn replace_next_token_if_cond(
+    /// Replaces next alphabetic token if meets condition.
+    fn add_multi_token_by_cond(
         &'src self,
         state: &mut Scanner,
-        prev_state: &mut Scanner,
+        prev_state: Option<&mut Scanner>,
+        prev_ttype: Option<TokenType<'src>>,
         filter_fn: impl FnOnce(&Token<'src>) -> bool,
         replacement_ttype: TokenType<'src>,
         tokens: &mut Vec<Token<'src>>,
-    ) -> anyhow::Result<()> {
+    ) -> anyhow::Result<Option<()>> {
         let next_alpha_token: Option<Token<'src>> =
             self.consume_while_cond(state, None, 0, is_alpha);
-        if next_alpha_token.filter(filter_fn).is_some() {
-            prev_state.current = state.current;
-            tokens.push(self.build_token(prev_state, replacement_ttype)?);
-        };
+        if let Some(next_token) = next_alpha_token {
+            // Check token meets condition.
+            if filter_fn(&next_token) {
+                // Use prev state, if provided, to include current token in text.
+                let adj_state = if let Some(prev_state) = prev_state {
+                    prev_state.current = state.current;
+                    prev_state
+                } else {
+                    state
+                };
+                tokens.push(self.build_token(adj_state, replacement_ttype)?);
 
-        Ok(())
+                Ok(Some(()))
+            } else {
+                // Add prev and next token to avoid losing since state advanced.
+                if let (Some(prev_state), Some(prev_ttype)) = (prev_state, prev_ttype) {
+                    tokens.push(self.build_token(&prev_state, prev_ttype)?)
+                }
+                tokens.push(next_token);
+                Ok(None)
+            }
+        } else if let (Some(prev_state), Some(prev_ttype)) = (prev_state, prev_ttype) {
+            // Add previous token since no next token
+            tokens.push(self.build_token(&prev_state, prev_ttype)?);
+            Ok(None)
+        } else {
+            Ok(None)
+        }
     }
 
     /// Scans any alphabetic token.
@@ -305,22 +328,30 @@ impl<'src> SAPText<'src> {
                         return Ok(());
                     }
                     // ex. "this has"
-                    Ok(TokenType::Position(PositionType::OnSelf)) => self
-                        .replace_next_token_if_cond(
+                    // If next token isn't "have", just add "this".
+                    // Otherwise, doesn't include this.
+                    Ok(TokenType::Position(PositionType::OnSelf)) => {
+                        self.add_multi_token_by_cond(
                             state,
-                            &mut prev_state,
+                            Some(&mut prev_state),
+                            Some(ttype?),
                             |token| token.ttype == TokenType::Logic(LogicType::Have),
                             TokenType::Logic(LogicType::Have),
                             tokens,
-                        )?,
+                        )?;
+                    }
                     // ex. "for each"
-                    Ok(TokenType::Logic(LogicType::For)) => self.replace_next_token_if_cond(
-                        state,
-                        &mut prev_state,
-                        |token| token.ttype == TokenType::Logic(LogicType::Each),
-                        TokenType::Logic(LogicType::ForEach),
-                        tokens,
-                    )?,
+                    // Normal situations should only include "for" with "each"/"every". Ignore others and don't add "for".
+                    Ok(TokenType::Logic(LogicType::For)) => {
+                        self.add_multi_token_by_cond(
+                            state,
+                            Some(&mut prev_state),
+                            None,
+                            |token| token.ttype == TokenType::Logic(LogicType::Each),
+                            TokenType::Logic(LogicType::ForEach),
+                            tokens,
+                        )?;
+                    }
                     // Otherwise, add new token.
                     Ok(ttype) => {
                         tokens.push(self.build_token(&prev_state, ttype)?);

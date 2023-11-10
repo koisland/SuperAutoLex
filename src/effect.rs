@@ -375,6 +375,7 @@ mod test {
         for token in _effect_txt.tokenize().unwrap().iter() {
             println!("{token}")
         }
+        todo!()
     }
 
     #[test]
@@ -386,6 +387,7 @@ mod test {
         for token in effect_txt.tokenize().unwrap().iter() {
             println!("{token}")
         }
+        todo!()
     }
 
     #[test]
@@ -402,6 +404,7 @@ mod test {
         for token in _effect_txt.tokenize().unwrap().iter() {
             println!("{token}")
         }
+        todo!()
     }
 
     #[test]
@@ -424,6 +427,7 @@ mod test {
             let effect = Effect::new(Some(trigger), &effect_tokens).unwrap();
             println!("{effect:?}")
         }
+        todo!()
     }
 
     #[test]
@@ -442,6 +446,7 @@ mod test {
         //     let effect = Effect::new(trigger, &effect_tokens).unwrap();
         //     println!("{effect:?}")
         // }
+        todo!()
     }
 
     #[test]
@@ -460,5 +465,6 @@ mod test {
             let effect = Effect::new(Some(trigger), &effect_tokens).unwrap();
             println!("{effect:?}")
         }
+        todo!()
     }
 }

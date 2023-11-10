@@ -59,7 +59,7 @@ impl<'src> SAPText<'src> {
     ///
     /// let trigger = SAPText::new("End turn");
     /// assert_eq!(
-    ///     *trigger::tokenize().unwrap,
+    ///     *trigger.tokenize().unwrap(),
     ///     [
     ///         Token {
     ///             ttype: TokenType::Logic(LogicType::End),

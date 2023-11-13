@@ -163,14 +163,14 @@ impl<'src> SAPText<'src> {
             } else {
                 // Add prev and next token to avoid losing since state advanced.
                 if let (Some(prev_state), Some(prev_ttype)) = (prev_state, prev_ttype) {
-                    tokens.push(self.build_token(&prev_state, prev_ttype)?)
+                    tokens.push(self.build_token(prev_state, prev_ttype)?)
                 }
                 tokens.push(next_token);
                 Ok(None)
             }
         } else if let (Some(prev_state), Some(prev_ttype)) = (prev_state, prev_ttype) {
             // Add previous token since no next token
-            tokens.push(self.build_token(&prev_state, prev_ttype)?);
+            tokens.push(self.build_token(prev_state, prev_ttype)?);
             Ok(None)
         } else {
             Ok(None)

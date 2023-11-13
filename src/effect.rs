@@ -1,6 +1,6 @@
 use std::iter::Peekable;
 
-use anyhow::bail;
+use anyhow::{bail, Context};
 
 use crate::{
     token::{
@@ -78,6 +78,43 @@ macro_rules! matches_peek_next {
     };
 }
 
+/// Update effect trigger from tokens.
+macro_rules! update_effect_trigger_from_token {
+    ($tokens:ident, $token:ident, $effect_trigger:ident) => {
+        match &$token.ttype {
+            TokenType::Numeric(NumericType::Number(Some(num))) => {
+                $effect_trigger.number = usize::try_from(*num).ok()
+            }
+            TokenType::Entity(entity) => $effect_trigger.entity = Some(entity.clone()),
+            TokenType::Position(pos) => {
+                if $effect_trigger.prim_pos.is_none() {
+                    $effect_trigger.prim_pos = Some(*pos)
+                } else if $effect_trigger.sec_pos.is_none() {
+                    $effect_trigger.sec_pos = Some(*pos)
+                }
+            }
+            TokenType::Target(target) => $effect_trigger.target = Some(*target),
+            TokenType::Action(action) => $effect_trigger.action = Some(*action),
+            TokenType::Logic(logic) => {
+                $effect_trigger.logic = Some(*logic);
+
+                // Check for specifically start of battle since made of multple tokens.
+                if matches_peek_next!(
+                    $tokens,
+                    |token| token.ttype == TokenType::Logic(LogicType::Start),
+                    |token| token.ttype == TokenType::Entity(EntityType::Battle(None)),
+                    |token| token.ttype == TokenType::Entity(EntityType::Ability(None))
+                )
+                .is_some()
+                {
+                    $effect_trigger.entity = Some(EntityType::Ability(Some("Start of battle")));
+                }
+            }
+            _ => {}
+        }
+    };
+}
+
 /// Create [`EffectTrigger`] for a [`LogicType::If`] effect.
 /// * This should be invoked **before** the current [`Token`] has a [`Token::ttype`] of [`LogicType::ForEach`].
 /// * Consumes iterator until [`TokenType::Action`] is found.
@@ -98,23 +135,7 @@ where
         ..Default::default()
     };
     while let Some(token) = tokens.next_if(|token| !matches!(token.ttype, TokenType::Action(_))) {
-        match &token.ttype {
-            TokenType::Numeric(NumericType::Number(Some(num))) => {
-                effect_trigger.number = usize::try_from(*num).ok()
-            }
-            TokenType::Entity(entity) => effect_trigger.entity = Some(entity.clone()),
-            TokenType::Position(pos) => {
-                if effect_trigger.prim_pos.is_none() {
-                    effect_trigger.prim_pos = Some(*pos)
-                } else if effect_trigger.sec_pos.is_none() {
-                    effect_trigger.sec_pos = Some(*pos)
-                }
-            }
-            TokenType::Target(target) => effect_trigger.target = Some(*target),
-            TokenType::Action(action) => effect_trigger.action = Some(*action),
-            TokenType::Logic(logic) => effect_trigger.logic = Some(*logic),
-            _ => {}
-        }
+        update_effect_trigger_from_token!(tokens, token, effect_trigger);
     }
     Some(effect_trigger)
 }
@@ -144,23 +165,7 @@ where
             TokenType::EndText | TokenType::Logic(LogicType::To)
         )
     }) {
-        match &token.ttype {
-            TokenType::Numeric(NumericType::Number(Some(num))) => {
-                effect_trigger.number = usize::try_from(*num).ok()
-            }
-            TokenType::Entity(entity) => effect_trigger.entity = Some(entity.clone()),
-            TokenType::Position(pos) => {
-                if effect_trigger.prim_pos.is_none() {
-                    effect_trigger.prim_pos = Some(*pos)
-                } else if effect_trigger.sec_pos.is_none() {
-                    effect_trigger.sec_pos = Some(*pos)
-                }
-            }
-            TokenType::Target(target) => effect_trigger.target = Some(*target),
-            TokenType::Action(action) => effect_trigger.action = Some(*action),
-            TokenType::Logic(logic) => effect_trigger.logic = Some(*logic),
-            _ => {}
-        }
+        update_effect_trigger_from_token!(tokens, token, effect_trigger);
     }
     effect_trigger
 }
@@ -235,6 +240,24 @@ impl<'src> Effect<'src> {
 
                         new_effect.validate_action()?;
                         effects.push(new_effect)
+                    }
+                }
+                TokenType::Logic(LogicType::Works) => {
+                    let next_usage_token = matches_peek_next!(tokens, |token| matches!(
+                        token.ttype,
+                        TokenType::Numeric(NumericType::Multiplier(_))
+                    ));
+                    if let Some(TokenType::Numeric(NumericType::Multiplier(Some(num_uses)))) =
+                        next_usage_token.map(|token| &token.ttype)
+                    {
+                        // Consume turns token stopping if not present.
+                        tokens
+                            .next_if(|token| {
+                                token.ttype == TokenType::Entity(EntityType::Turn(None))
+                            })
+                            .context("Must have Turns token after number of uses.")?;
+                        // Set number of uses.
+                        effect.uses = Some(usize::try_from(*num_uses)?)
                     }
                 }
                 TokenType::Logic(logic) => {}
@@ -346,11 +369,11 @@ mod test {
                 cond_trigger: Some(EffectTrigger {
                     action: None,
                     number: None,
-                    entity: Some(EntityType::Tier(None)),
                     target: Some(TargetType::Friend),
-                    logic: Some(LogicType::Is),
                     prim_pos: Some(PositionType::OnSelf),
-                    sec_pos: Some(PositionType::Highest)
+                    logic: Some(LogicType::Is),
+                    sec_pos: Some(PositionType::Highest),
+                    entity: Some(EntityType::Tier(None)),
                 }),
                 target: None,
                 entities: vec![EntityType::Attack(Some(1)), EntityType::Health(Some(2))],
@@ -364,47 +387,139 @@ mod test {
 
     #[test]
     fn test_interpret_conditional_battle_effect() {
-        let trigger_txt = SAPText::new("Empty Front Space");
         let effect_txt = SAPText::new("If in battle, gain +1 attack and +2 health.");
-        let _effect_txt = SAPText::new("If outside battle, gain +1 attack and +2 health.");
+        let tokens = effect_txt.tokenize().unwrap();
+        let effects = Effect::new(None, &tokens).unwrap();
 
-        for token in effect_txt.tokenize().unwrap().iter() {
-            println!("{token}")
-        }
-
-        for token in _effect_txt.tokenize().unwrap().iter() {
-            println!("{token}")
-        }
-        todo!()
+        assert_eq!(effects.len(), 1);
+        assert_eq!(
+            effects[0],
+            Effect {
+                trigger: None,
+                cond_trigger: Some(EffectTrigger {
+                    action: None,
+                    number: None,
+                    entity: Some(EntityType::Battle(None)),
+                    target: None,
+                    logic: Some(LogicType::In),
+                    prim_pos: None,
+                    sec_pos: None
+                }),
+                target: None,
+                entities: vec![EntityType::Attack(Some(1)), EntityType::Health(Some(2))],
+                position: vec![PositionType::OnSelf],
+                action: Some(ActionType::Gain),
+                uses: None,
+                temp: false
+            }
+        )
     }
 
     #[test]
     fn test_interpret_conditional_toy_effect() {
-        let trigger_txt = SAPText::new("Faint");
         let effect_txt =
             SAPText::new("If you have a toy, give the nearest friend behind +10 health.");
 
-        for token in effect_txt.tokenize().unwrap().iter() {
-            println!("{token}")
-        }
-        todo!()
+        let tokens = effect_txt.tokenize().unwrap();
+        let effects = Effect::new(None, &tokens).unwrap();
+
+        assert_eq!(effects.len(), 1);
+        assert_eq!(
+            effects[0],
+            Effect {
+                trigger: None,
+                cond_trigger: Some(EffectTrigger {
+                    action: None,
+                    number: None,
+                    entity: Some(EntityType::Toy(None)),
+                    target: None,
+                    logic: Some(LogicType::Have),
+                    prim_pos: None,
+                    sec_pos: None,
+                },),
+                target: Some(TargetType::Friend),
+                entities: vec![EntityType::Health(Some(10))],
+                position: vec![PositionType::Nearest, PositionType::Behind],
+                action: Some(ActionType::Give),
+                uses: None,
+                temp: false,
+            }
+        )
     }
 
     #[test]
-    fn test_interpret_conditional_trigger_effect() {
-        let trigger_txt = SAPText::new("Friend faints");
+    fn test_interpret_conditional_start_battle_effect() {
+        let effect_txt = SAPText::new("If it has a Start of battle ability, gain +2 attack.");
+        let tokens = effect_txt.tokenize().unwrap();
+        let effects = Effect::new(None, &tokens).unwrap();
+
+        assert_eq!(
+            effects[0],
+            Effect {
+                trigger: None,
+                cond_trigger: Some(EffectTrigger {
+                    action: None,
+                    number: None,
+                    entity: Some(EntityType::Ability(Some("Start of battle"))),
+                    target: None,
+                    logic: Some(LogicType::Have),
+                    prim_pos: Some(PositionType::Trigger),
+                    sec_pos: None
+                }),
+                target: None,
+                entities: vec![EntityType::Attack(Some(2))],
+                position: vec![PositionType::OnSelf],
+                action: Some(ActionType::Gain),
+                uses: None,
+                temp: false
+            }
+        )
+    }
+
+    #[test]
+    fn test_interpret_conditional_invalid_multi_use_effect() {
+        let invalid_effect_txt = SAPText::new(
+            "If it was a Faint pet, activate its ability again. Works 1 time per game.",
+        );
+        let invalid_tokens = invalid_effect_txt.tokenize().unwrap();
+        // Works per turn only.
+        assert!(Effect::new(None, &invalid_tokens).is_err());
+    }
+
+    #[test]
+    fn test_interpret_conditional_multi_use_effect() {
         let effect_txt = SAPText::new(
             "If it was a Faint pet, activate its ability again. Works 1 time per turn.",
         );
-        let _effect_txt = SAPText::new("If it has a Start of battle ability, gain +2 attack.");
 
-        for token in effect_txt.tokenize().unwrap().iter() {
-            println!("{token}")
-        }
-        for token in _effect_txt.tokenize().unwrap().iter() {
-            println!("{token}")
-        }
-        todo!()
+        let tokens = effect_txt.tokenize().unwrap();
+        let effects = Effect::new(None, &tokens).unwrap();
+
+        assert_eq!(
+            effects[0],
+            Effect {
+                trigger: None,
+                cond_trigger: Some(EffectTrigger {
+                    action: None,
+                    number: None,
+                    entity: Some(EntityType::Pet {
+                        number: None,
+                        name: None,
+                        attr: Some("Faint")
+                    }),
+                    target: None,
+                    logic: Some(LogicType::If),
+                    prim_pos: Some(PositionType::Trigger),
+                    sec_pos: None
+                }),
+                target: None,
+                entities: vec![EntityType::Ability(None)],
+                position: vec![PositionType::Trigger],
+                action: Some(ActionType::Activate),
+                uses: Some(1),
+                temp: false
+            }
+        )
     }
 
     #[test]

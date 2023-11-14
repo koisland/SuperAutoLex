@@ -24,8 +24,16 @@ Works 1 time per turn.
 
 ```rust compile_fail
 SAPTokens([
-    Token { ttype: Logic(If), text: "If", metadata: Scanner { start: 0, current: 2, line: 1 } },
-    Token { ttype: Position(Trigger), text: "it", metadata: Scanner { start: 3, current: 5, line: 1 } },
+    Token {
+        ttype: Logic(If),
+        text: "If",
+        metadata: Scanner { start: 0, current: 2, line: 1 }
+    },
+    Token {
+        ttype: Position(Trigger),
+        text: "it",
+        metadata: Scanner { start: 3, current: 5, line: 1 }
+    },
     ...
 ])
 ```
@@ -35,7 +43,9 @@ SAPTokens([
 ```rust compile_fail
 Effect {
     cond_trigger: Some(EffectTrigger {
-        entity: Some(EntityType::Pet { number: None, name: None, attr: Some("Faint")}),
+        entity: Some(EntityType::Pet {
+            number: None, name: None, attr: Some("Faint")
+        }),
         logic: Some(LogicType::If),
         prim_pos: Some(PositionType::Trigger),
         ..Default::default()

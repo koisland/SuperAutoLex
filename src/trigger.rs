@@ -1,5 +1,8 @@
 use anyhow::bail;
 
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
+
 use crate::token::{
     actions::ActionType, attribute::EntityType, logic::LogicType, numeric::NumericType,
     position::PositionType, target::TargetType, types::TokenType, SAPTokens,
@@ -8,12 +11,14 @@ use crate::token::{
 /// A Super Auto Pets effect trigger.
 /// - ex. `End turn`
 #[derive(Debug, Clone, Default, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct EffectTrigger<'src> {
     /// Action
     pub action: Option<ActionType>,
     /// Number of trigger, if any.
     pub number: Option<usize>,
     /// Entity type.
+    #[serde(borrow)]
     pub entity: Option<EntityType<'src>>,
     /// The target type.
     pub target: Option<TargetType>,

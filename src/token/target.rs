@@ -4,8 +4,12 @@ use std::str::FromStr;
 
 use anyhow::bail;
 
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
+
 /// SAP target types.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum TargetType {
     /// Friendly pets.
     #[default]

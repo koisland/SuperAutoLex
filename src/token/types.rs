@@ -3,6 +3,9 @@ use std::str::FromStr;
 
 use anyhow::bail;
 
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
+
 use super::{
     actions::ActionType, attribute::EntityType, logic::LogicType, numeric::NumericType,
     position::PositionType, target::TargetType, ParseNumber,
@@ -10,10 +13,12 @@ use super::{
 
 /// All possible SAP token types.
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum TokenType<'src> {
     /// Numeric tokens.
     Numeric(NumericType),
     /// Entity tokens.
+    #[serde(borrow)]
     Entity(EntityType<'src>),
     /// End of text.
     EndText,

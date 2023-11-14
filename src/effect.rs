@@ -2,6 +2,9 @@ use std::iter::Peekable;
 
 use anyhow::{bail, Context};
 
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
+
 use crate::{
     token::{
         actions::ActionType, attribute::EntityType, logic::LogicType, numeric::NumericType,
@@ -13,6 +16,7 @@ use crate::{
 /// A Super Auto Pets effect.
 /// - ex. `Gain +2 attack and +2 health.`
 #[derive(Debug, Default, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Effect<'src> {
     /// Effect trigger.
     pub trigger: Option<EffectTrigger<'src>>,
@@ -21,6 +25,7 @@ pub struct Effect<'src> {
     /// Target of the effect.
     pub target: Option<TargetType>,
     /// Affected entities.
+    #[serde(borrow)]
     pub entities: Vec<EntityType<'src>>,
     /// Position of target to affect.
     pub position: Vec<PositionType>,
@@ -67,6 +72,7 @@ macro_rules! update_effect_max_min_stat_pos {
 /// ### Returns
 /// * Last matching element in chain.
 #[macro_export]
+#[doc(hidden)]
 macro_rules! matches_peek_next {
     // Base case.
     ($iter:ident, $cond:expr) => {

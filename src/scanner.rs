@@ -1,7 +1,11 @@
 use std::fmt::Display;
 
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
+
 /// [`SAPText`] parser state.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Scanner {
     /// Start character index of lexeme.
     pub start: usize,

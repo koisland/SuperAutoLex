@@ -2,6 +2,9 @@
 
 use std::{fmt::Display, ops::Deref};
 
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
+
 use crate::scanner::Scanner;
 
 pub mod actions;
@@ -21,6 +24,7 @@ pub use self::{
 
 /// A SAP text token.
 #[derive(Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Token<'src> {
     /// Type of token.
     pub ttype: TokenType<'src>,

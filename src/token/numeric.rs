@@ -4,11 +4,15 @@ use std::str::FromStr;
 
 use anyhow::bail;
 
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
+
 use super::ParseNumber;
 
 /// Numerical operation and value tokens.
 /// - A [`None`] indicates the word itself.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum NumericType {
     /// A number.
     /// - ex. `two pets`

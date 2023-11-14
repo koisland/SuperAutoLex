@@ -50,6 +50,23 @@ let effect_trigger = {
 let effect = Effect::new(Some(effect_trigger), &effect_tokens).unwrap();
 ```
 
+Enable the `serde` feature flag to serialize and deserialize effects.
+```bash
+cargo add --git https://github.com/koisland/SuperAutoLex --features serde
+```
+
+To serialize and deserialize effects:
+```rust
+use saplex::{SAPText, EffectTrigger, Effect};
+
+let effect_txt = SAPText::new("If in battle, gain +1 attack and +2 health.");
+let tokens = effect_txt.tokenize().unwrap();
+let effects = Effect::new(None, &tokens).unwrap();
+
+let effect_txt_json: String = serde_json::to_string(&effects[0]).unwrap();
+let effect: Effect = serde_json::from_str(&effect_txt_json).unwrap();
+```
+
 ### Rules
 Item names are always uppercase.
 * Pets can be one or two words long.
@@ -59,6 +76,7 @@ Item names are always uppercase.
     * `Melon Perk`
     * Can also omitted if prior word is `with`.
         * `Dog with Melon.`
+* WIP
 
 ### TODO
 * [ ] Declarative macro to construct effects.

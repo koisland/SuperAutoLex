@@ -1,5 +1,8 @@
 use std::slice::SliceIndex;
 
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
+
 use crate::{
     scanner::Scanner,
     token::{
@@ -21,6 +24,7 @@ fn is_alpha(chr: Option<char>) -> Option<char> {
 
 /// Super Auto Pets text.
 #[derive(Default)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct SAPText<'src> {
     /// Raw text.
     pub effect: &'src str,

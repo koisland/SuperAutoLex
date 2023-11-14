@@ -4,12 +4,16 @@ use std::str::FromStr;
 
 use anyhow::bail;
 
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
+
 use super::ParseNumber;
 
 /// All possible entity types in Super Auto Pets.
 /// - If [`None`], the entity itself.
 ///     - ex. `EntityType::Battle(None)` -> `battle`
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum EntityType<'src> {
     /// Pet.
     Pet {

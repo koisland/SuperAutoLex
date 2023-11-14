@@ -1,5 +1,53 @@
 # Super Auto Lex
-Lexer to parse SAP Pet effect text into a stream of tokens.
+Lexer to tokenize [Super Auto Pets](https://teamwoodgames.com/) effect text and parse into an effect.
+
+<table>
+<tr>
+<th>Text</th>
+<th>Tokens</th>
+<th>Effect</th>
+</tr>
+<tr>
+<td>
+
+```ignore
+If it was a Faint pet,
+activate its ability again.
+Works 1 time per turn.
+```
+
+</td>
+<td>
+
+```rust compile_fail
+SAPTokens([
+    Token { ttype: Logic(If), text: "If", metadata: Scanner { start: 0, current: 2, line: 1 } },
+    Token { ttype: Position(Trigger), text: "it", metadata: Scanner { start: 3, current: 5, line: 1 } },
+    ...
+])
+```
+</td>
+<td>
+
+```rust compile_fail
+Effect {
+    cond_trigger: Some(EffectTrigger {
+        entity: Some(EntityType::Pet { number: None, name: None, attr: Some("Faint")}),
+        logic: Some(LogicType::If),
+        prim_pos: Some(PositionType::Trigger),
+        ..Default::default()
+    }),
+    entities: vec![EntityType::Ability(None)],
+    position: vec![PositionType::Trigger],
+    action: Some(ActionType::Activate),
+    uses: Some(1),
+    ..Default::default()
+}
+```
+
+</td>
+</tr>
+</table>
 
 ### Usage
 ```bash
@@ -76,7 +124,13 @@ Item names are always uppercase.
     * `Melon Perk`
     * Can also omitted if prior word is `with`.
         * `Dog with Melon.`
-* WIP
+
+The first word of a text must be either a `if` condition or an action.
+* `If ..., ...`
+* `Gain ...`
+
+`If` statements should also contain an action.
+* `If ..., gain ...`
 
 ### TODO
 * [ ] Declarative macro to construct effects.

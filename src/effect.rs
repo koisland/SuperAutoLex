@@ -351,7 +351,13 @@ impl<'src> Effect<'src> {
                     self.position.push(PositionType::OnSelf)
                 }
             }
-            Some(_) | None => {}
+            Some(_) => {}
+            None => {
+                // Cannot have conditional without an action.
+                if let Some(cond) = &self.cond_trigger {
+                    bail!("Condition must be followed by an action. ({cond:?})")
+                }
+            }
         }
 
         Ok(())
@@ -689,5 +695,12 @@ mod test {
                 temp: false
             }
         )
+    }
+
+    #[test]
+    fn test_interpret_invalid_conditional_without_action() {
+        let effect_txt = SAPText::new("If in battle.");
+        let tokens = effect_txt.tokenize().unwrap();
+        assert!(Effect::new(None, &tokens).is_err())
     }
 }

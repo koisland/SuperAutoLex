@@ -1,4 +1,7 @@
 # Super Auto Lex
+[![CI](https://github.com/koisland/SuperAutoLex/actions/workflows/ci.yaml/badge.svg)](https://github.com/koisland/SuperAutoLex/actions/workflows/ci.yaml)
+[![codecov](https://codecov.io/gh/koisland/SuperAutoLex/graph/badge.svg?token=RGFu9oKEwf)](https://codecov.io/gh/koisland/SuperAutoLex)
+
 Lexer to tokenize [Super Auto Pets](https://teamwoodgames.com/) effect text and parse into an effect.
 
 <table>

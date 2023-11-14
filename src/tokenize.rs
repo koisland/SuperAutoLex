@@ -126,6 +126,7 @@ impl<'src> SAPText<'src> {
             '0'..='9' => {
                 self.scan_numeric_token(state, tokens)?;
             }
+            '&' => tokens.push(self.build_token(state, TokenType::Logic(LogicType::And))?),
             _ => {
                 bail!("{state}. Invalid character ({c})")
             }

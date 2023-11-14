@@ -17,5 +17,7 @@ pub mod tokenize;
 /// SAP effect trigger.
 pub mod trigger;
 
+pub use effect::Effect;
 pub use token::{types::TokenType, Token};
 pub use tokenize::SAPText;
+pub use trigger::EffectTrigger;

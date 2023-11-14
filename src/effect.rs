@@ -174,8 +174,38 @@ impl<'src> Effect<'src> {
     ///
     /// ### Params
     /// * `trigger`
+    ///     * Optional [`EffectTrigger`]
     /// * `tokens`
-    fn new(trigger: Option<EffectTrigger>, tokens: &'src SAPTokens) -> anyhow::Result<Vec<Self>> {
+    ///     * Effect text [`Token`]s as [`SAPTokens`].
+    ///
+    /// ### Returns
+    /// * One or more [`Effect`]s.
+    ///
+    /// ```
+    /// use saplex::{SAPText, EffectTrigger, Effect};
+    ///
+    /// // Define effect text.
+    /// let trigger_txt = SAPText::new("Enemy summoned");
+    /// let effect_txt =
+    ///     SAPText::new("Deal 100% attack damage to the least healthy enemy and itself.");
+    ///
+    /// // Create tokens.
+    /// let effect_tokens = effect_txt.tokenize().unwrap();
+    /// let trigger_tokens = trigger_txt.tokenize().unwrap();
+    ///
+    /// // Create effect trigger.
+    /// let effect_trigger = {
+    ///     let mut effect_trigger: Vec<EffectTrigger> = trigger_tokens.try_into().unwrap();
+    ///     effect_trigger.remove(0)
+    /// };
+    ///
+    /// // And finally, create the effect.
+    /// let effect = Effect::new(Some(effect_trigger), &effect_tokens).unwrap();
+    /// ```
+    pub fn new(
+        trigger: Option<EffectTrigger<'src>>,
+        tokens: &'src SAPTokens,
+    ) -> anyhow::Result<Vec<Self>> {
         let mut tokens = tokens.iter().peekable();
         let mut effects: Vec<Effect> = vec![];
         let mut effect = Effect {
@@ -183,6 +213,7 @@ impl<'src> Effect<'src> {
             cond_trigger: create_if_cond(&mut tokens),
             ..Default::default()
         };
+        effect.trigger = trigger.clone();
 
         while let Some(token) = tokens.next() {
             match &token.ttype {
@@ -202,7 +233,7 @@ impl<'src> Effect<'src> {
                         health = PositionType::Illest
                     );
                 }
-                TokenType::Numeric(num) => {}
+                TokenType::Numeric(_) => {}
                 TokenType::Entity(entity) => {
                     // Consume next token if damage attribute.
                     // This is attack/attack perc damage.
@@ -235,7 +266,10 @@ impl<'src> Effect<'src> {
                 TokenType::Logic(LogicType::And | LogicType::Or) => {
                     // If next token is action, create new effect.
                     if let Some(TokenType::Action(_)) = tokens.peek().map(|token| &token.ttype) {
-                        let mut new_effect = Effect::default();
+                        let mut new_effect = Effect {
+                            trigger: trigger.clone(),
+                            ..Default::default()
+                        };
                         std::mem::swap(&mut effect, &mut new_effect);
 
                         new_effect.validate_action()?;
@@ -260,7 +294,7 @@ impl<'src> Effect<'src> {
                         effect.uses = Some(usize::try_from(*num_uses)?)
                     }
                 }
-                TokenType::Logic(logic) => {}
+                TokenType::Logic(_) => {}
                 TokenType::Action(action) => effect.action = Some(*action),
             }
         }
@@ -303,6 +337,12 @@ impl<'src> Effect<'src> {
                 // Give must always have a position.
                 if self.position.is_empty() {
                     bail!("Position must be given for {:?}", self.action)
+                }
+            }
+            Some(ActionType::Summon) => {
+                // Assume on self if no positions.
+                if self.position.is_empty() {
+                    self.position.push(PositionType::OnSelf)
                 }
             }
             Some(_) | None => {}
@@ -524,44 +564,93 @@ mod test {
 
     #[test]
     fn test_interpret_foreach_effect() {
-        let trigger_txt = SAPText::new("Start of turn");
         let effect_txt =
             SAPText::new("Gain +1 attack and +1 health until end of battle for each gold over 10.");
         let effect_middle_txt =
             SAPText::new("Deal 2 damage for each Strawberry friend to one random enemy.");
 
         let effect_tokens = effect_middle_txt.tokenize().unwrap();
+        let effects = Effect::new(None, &effect_tokens).unwrap();
+        assert_eq!(
+            effects[0],
+            Effect {
+                trigger: None,
+                cond_trigger: Some(EffectTrigger {
+                    action: None,
+                    number: None,
+                    entity: Some(EntityType::Pet {
+                        number: None,
+                        name: None,
+                        attr: Some("Strawberry")
+                    }),
+                    target: None,
+                    logic: Some(LogicType::ForEach),
+                    prim_pos: None,
+                    sec_pos: None
+                }),
+                target: Some(TargetType::Enemy),
+                entities: vec![EntityType::Damage(Some(2))],
+                position: vec![PositionType::Any],
+                action: Some(ActionType::Deal),
+                uses: None,
+                temp: false
+            }
+        );
 
-        for token in effect_middle_txt.tokenize().unwrap().iter() {
-            println!("{token}")
-        }
+        let effect_tokens = effect_txt.tokenize().unwrap();
+        let effects = Effect::new(None, &effect_tokens).unwrap();
 
-        let effect_triggers =
-            TryInto::<Vec<EffectTrigger>>::try_into(trigger_txt.tokenize().unwrap()).unwrap();
-        for trigger in effect_triggers {
-            let effect = Effect::new(Some(trigger), &effect_tokens).unwrap();
-            println!("{effect:?}")
-        }
-        todo!()
+        assert_eq!(
+            effects[0],
+            Effect {
+                trigger: None,
+                cond_trigger: Some(EffectTrigger {
+                    action: None,
+                    number: Some(10),
+                    entity: Some(EntityType::Gold(None)),
+                    target: None,
+                    logic: Some(LogicType::ForEach),
+                    prim_pos: None,
+                    sec_pos: None
+                }),
+                target: None,
+                entities: vec![EntityType::Attack(Some(1)), EntityType::Health(Some(1))],
+                position: vec![PositionType::OnSelf],
+                action: Some(ActionType::Gain),
+                uses: None,
+                temp: true
+            }
+        )
+        // todo!()
     }
 
     #[test]
     fn test_interpret_summon_effect() {
-        let trigger_txt = SAPText::new("Enemy summoned");
-        let effect_txt = SAPText::new("Summon one Loyal Chinchilla.");
-
-        let triggers: Vec<EffectTrigger> = trigger_txt.tokenize().unwrap().try_into().unwrap();
+        let effect_txt = SAPText::new("Summon one 1/1 Dirty Rat up front for the opponent.");
         let effect_tokens = effect_txt.tokenize().unwrap();
+        let effect = Effect::new(None, &effect_tokens).unwrap();
 
-        for token in effect_tokens.iter() {
-            println!("{token}")
-        }
-
-        // for trigger in triggers {
-        //     let effect = Effect::new(trigger, &effect_tokens).unwrap();
-        //     println!("{effect:?}")
-        // }
-        todo!()
+        assert_eq!(
+            effect[0],
+            Effect {
+                trigger: None,
+                cond_trigger: None,
+                target: Some(TargetType::Enemy),
+                entities: vec![
+                    EntityType::Attack(Some(1)),
+                    EntityType::Health(Some(1)),
+                    EntityType::Pet {
+                        number: None,
+                        name: Some("Dirty Rat"),
+                        attr: None
+                    }
+                ],
+                position: vec![PositionType::RightMost],
+                action: Some(ActionType::Summon),
+                uses: None,
+                temp: false
+            }
+        )
     }
 
     #[test]
@@ -570,16 +659,29 @@ mod test {
         let effect_txt =
             SAPText::new("Deal 100% attack damage to the least healthy enemy and itself.");
         let effect_tokens = effect_txt.tokenize().unwrap();
+        let trigger_tokens = trigger_txt.tokenize().unwrap();
+        let effect_trigger = {
+            let mut effect_trigger: Vec<EffectTrigger> = trigger_tokens.try_into().unwrap();
+            effect_trigger.remove(0)
+        };
 
-        let triggers: Vec<EffectTrigger> = trigger_txt.tokenize().unwrap().try_into().unwrap();
-
-        // for token in effect_tokens.iter() {
-        //     println!("{token}")
-        // }
-        for trigger in triggers {
-            let effect = Effect::new(Some(trigger), &effect_tokens).unwrap();
-            println!("{effect:?}")
-        }
-        todo!()
+        let effect = Effect::new(Some(effect_trigger), &effect_tokens).unwrap();
+        assert_eq!(
+            effect[0],
+            Effect {
+                trigger: Some(EffectTrigger {
+                    action: Some(ActionType::Summon),
+                    target: Some(TargetType::Enemy),
+                    ..Default::default()
+                }),
+                cond_trigger: None,
+                target: Some(TargetType::Enemy),
+                entities: vec![EntityType::AttackPercent(Some(100.0))],
+                position: vec![PositionType::Illest, PositionType::OnSelf],
+                action: Some(ActionType::Deal),
+                uses: None,
+                temp: false
+            }
+        )
     }
 }

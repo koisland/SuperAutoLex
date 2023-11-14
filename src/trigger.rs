@@ -7,7 +7,7 @@ use crate::token::{
 
 /// A Super Auto Pets effect trigger.
 /// - ex. `End turn`
-#[derive(Debug, Default, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct EffectTrigger<'src> {
     /// Action
     pub action: Option<ActionType>,
@@ -165,6 +165,17 @@ mod tests {
                 ..Default::default()
             }]
         )
+    }
+
+    #[test]
+    fn test_interpret_ampersand_effect_trigger() {
+        let sym_txt = SAPText::new("After attack & before attack");
+        let txt = SAPText::new("After attack and before attack");
+
+        let sym_triggers: Vec<EffectTrigger> = txt.tokenize().unwrap().try_into().unwrap();
+        let triggers: Vec<EffectTrigger> = sym_txt.tokenize().unwrap().try_into().unwrap();
+
+        assert_eq!(sym_triggers, triggers);
     }
 
     #[test]

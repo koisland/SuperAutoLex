@@ -17,9 +17,9 @@ fn is_digit(chr: Option<char>) -> Option<char> {
     chr.filter(|chr| chr.is_ascii_digit())
 }
 
-/// Check if is alphabet char or apostrophe.
+/// Check if is alphabet char or apostrophe or hyphen.
 fn is_alpha(chr: Option<char>) -> Option<char> {
-    chr.filter(|chr| chr.is_alphabetic() || *chr == '\'')
+    chr.filter(|chr| chr.is_alphabetic() || *chr == '\'' || *chr == '-')
 }
 
 /// Super Auto Pets text.
@@ -244,7 +244,8 @@ impl<'src> SAPText<'src> {
                     let is_next_word_food_related = next_word == Some("perk")
                         || next_word == Some("Perk")
                         || tokens.last().map(|token| &token.ttype)
-                            == Some(&TokenType::Logic(LogicType::With));
+                            == Some(&TokenType::Logic(LogicType::With))
+                            && next_word != Some("ability");
 
                     // Set entity if meet condition.
                     match (
@@ -678,10 +679,84 @@ impl<'src> SAPText<'src> {
 
 #[cfg(test)]
 mod test {
-    use crate::token::actions::ActionType;
+    use crate::token::{actions::ActionType, TargetType};
     use pretty_assertions::assert_eq;
 
     use super::*;
+
+    #[test]
+    fn test_tokenize_hyphen_word() {
+        let txt = SAPText::new("Give right-most friend +6 attack and +9 health.");
+        let tokens = txt.tokenize().unwrap();
+        assert_eq!(
+            *tokens,
+            [
+                Token {
+                    ttype: TokenType::Action(ActionType::Give),
+                    text: "Give",
+                    metadata: Scanner {
+                        start: 0,
+                        current: 4,
+                        line: 1
+                    }
+                },
+                Token {
+                    ttype: TokenType::Position(PositionType::RightMost),
+                    text: "right-most",
+                    metadata: Scanner {
+                        start: 5,
+                        current: 15,
+                        line: 1
+                    }
+                },
+                Token {
+                    ttype: TokenType::Target(TargetType::Friend),
+                    text: "friend",
+                    metadata: Scanner {
+                        start: 16,
+                        current: 22,
+                        line: 1
+                    }
+                },
+                Token {
+                    ttype: TokenType::Entity(EntityType::Attack(Some(6))),
+                    text: "+6 attack",
+                    metadata: Scanner {
+                        start: 23,
+                        current: 32,
+                        line: 1
+                    }
+                },
+                Token {
+                    ttype: TokenType::Logic(LogicType::And),
+                    text: "and",
+                    metadata: Scanner {
+                        start: 33,
+                        current: 36,
+                        line: 1
+                    }
+                },
+                Token {
+                    ttype: TokenType::Entity(EntityType::Health(Some(9))),
+                    text: "+9 health",
+                    metadata: Scanner {
+                        start: 37,
+                        current: 46,
+                        line: 1
+                    }
+                },
+                Token {
+                    ttype: TokenType::EndText,
+                    text: "",
+                    metadata: Scanner {
+                        start: 47,
+                        current: 47,
+                        line: 1
+                    }
+                }
+            ]
+        )
+    }
 
     #[test]
     fn test_tokenize_pet_with_attr() {

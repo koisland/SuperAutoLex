@@ -34,6 +34,8 @@ pub enum EntityType<'src> {
     },
     /// Toy entity.
     Toy(Option<&'src str>),
+    /// Game pack.
+    Pack(Option<&'src str>),
     /// Effect ability.
     Ability(Option<&'src str>),
     /// Food perk.
@@ -103,7 +105,7 @@ impl<'src> EntityType<'src> {
             | EntityType::DamagePercent(v)
             | EntityType::GoldPercent(v)
             | EntityType::TrumpetPercent(v) => v.map(|val| val as i32),
-            EntityType::Toy(_) | EntityType::Ability { .. } => None,
+            EntityType::Toy(_) | EntityType::Pack(_) | EntityType::Ability { .. } => None,
         }
     }
 }
@@ -141,7 +143,7 @@ impl<'src> ParseNumber for EntityType<'src> {
             | EntityType::TrumpetPercent(ref mut v) => {
                 v.replace(cleaned_num_str.parse()?);
             }
-            EntityType::Toy(_) | EntityType::Ability { .. } => {}
+            EntityType::Toy(_) | EntityType::Pack(_) | EntityType::Ability { .. } => {}
         }
 
         Ok(self)
@@ -178,6 +180,7 @@ impl<'src> FromStr for EntityType<'src> {
             "uses" => EntityType::Uses(None),
             "experience" => EntityType::Experience(None),
             "ability" => EntityType::Ability(None),
+            "pack" => EntityType::Pack(None),
             _ => bail!("Not a valid EntityType {s}"),
         })
     }

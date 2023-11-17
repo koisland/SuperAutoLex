@@ -7,7 +7,7 @@ use anyhow::bail;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
-/// Logic related tokens.
+/// Logic related tokens. Also some prepositions (TODO: Move to separate enum?)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum LogicType {
@@ -61,6 +61,12 @@ pub enum LogicType {
     In,
     /// Outside of battle.
     Outside,
+    /// Next of something.
+    Next,
+    /// Previous something.
+    Previous,
+    /// From something. Usually a position.
+    From,
 }
 
 impl FromStr for LogicType {
@@ -88,6 +94,9 @@ impl FromStr for LogicType {
             "in" => LogicType::In,
             "to" => LogicType::To,
             "outside" => LogicType::Outside,
+            "next" => LogicType::Next,
+            "previous" => LogicType::Previous,
+            "from" => LogicType::From,
             _ => bail!("Not a valid LogicType. {s}"),
         })
     }

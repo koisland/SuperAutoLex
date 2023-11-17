@@ -240,6 +240,55 @@ impl<'src> Effect<'src> {
                     );
                 }
                 TokenType::Numeric(_) => {}
+                // Blank pet token. Check ahead for attributes:
+                TokenType::Entity(EntityType::Pet {
+                    number: None,
+                    name: None,
+                    attr: None,
+                }) => {
+                    // Check for describing attr related to some order.
+                    // ex. "from next shop"
+                    // TODO: ...after fainting for Beluga whale / whale. Should be two separate effects where one alters previous to `on faint`?
+                    let token_logic_order = matches_peek_next!(
+                        tokens,
+                        |token| token.ttype == TokenType::Logic(LogicType::From),
+                        |token| matches!(
+                            token.ttype,
+                            TokenType::Logic(LogicType::Previous)
+                                | TokenType::Logic(LogicType::Next)
+                        )
+                    )
+                    .map(|token| &token.ttype);
+
+                    let shop_tier = matches_peek_next!(
+                        tokens,
+                        |token| token.ttype == TokenType::Target(TargetType::Shop),
+                        |token| token.ttype == TokenType::Entity(EntityType::Tier(None))
+                    )
+                    .is_some();
+
+                    match token_logic_order {
+                        Some(TokenType::Logic(LogicType::Previous)) => {
+                            if shop_tier {
+                                effect.entities.push(EntityType::Pet {
+                                    number: None,
+                                    name: None,
+                                    attr: Some("previous shop tier"),
+                                })
+                            }
+                        }
+                        Some(TokenType::Logic(LogicType::Next)) => {
+                            if shop_tier {
+                                effect.entities.push(EntityType::Pet {
+                                    number: None,
+                                    name: None,
+                                    attr: Some("next shop tier"),
+                                })
+                            }
+                        }
+                        _ => {}
+                    }
+                }
                 TokenType::Entity(entity) => {
                     // Consume next token if damage attribute.
                     // This is attack/attack perc damage.
@@ -702,5 +751,19 @@ mod test {
         let effect_txt = SAPText::new("If in battle.");
         let tokens = effect_txt.tokenize().unwrap();
         assert!(Effect::new(None, &tokens).is_err())
+    }
+
+    #[test]
+    fn test_interpret_prev_tier_effect() {
+        // TODO: `from` signals descriptor of something. `as`/`EOF`/`.` signals end of descriptor.
+        // * pet
+        let effect_txt = SAPText::new("Summon one random pet with Faint ability from any pack.");
+        let tokens = effect_txt.tokenize().unwrap();
+        for token in tokens.iter() {
+            println!("{token}")
+        }
+
+        let effects = Effect::new(None, &tokens).unwrap();
+        println!("{:?}", effects[0])
     }
 }

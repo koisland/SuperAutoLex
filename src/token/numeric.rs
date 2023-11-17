@@ -50,8 +50,8 @@ impl FromStr for NumericType {
         Ok(match s {
             "time" | "times" => NumericType::Multiplier(None),
             "one" => NumericType::Number(Some(1)),
-            "two" => NumericType::Number(Some(2)),
-            "three" => NumericType::Number(Some(3)),
+            "two" | "twice" => NumericType::Number(Some(2)),
+            "three" | "thrice" => NumericType::Number(Some(3)),
             "four" => NumericType::Number(Some(4)),
             "five" => NumericType::Number(Some(5)),
             "six" => NumericType::Number(Some(6)),

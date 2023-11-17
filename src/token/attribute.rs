@@ -1,6 +1,6 @@
 //! SAP item attribute/entity tokens.
 
-use std::{str::FromStr, borrow::Cow};
+use std::{borrow::Cow, str::FromStr};
 
 use anyhow::bail;
 

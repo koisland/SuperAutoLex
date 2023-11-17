@@ -1,4 +1,4 @@
-use std::{slice::SliceIndex, borrow::Cow};
+use std::{borrow::Cow, slice::SliceIndex};
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -263,9 +263,9 @@ impl<'src> SAPText<'src> {
                                 number: None,
                                 name: None,
                                 // Assign attribute if any.
-                                attr: is_pet_attr.then_some(
-                                    Cow::Borrowed(self.get_text_slice(state.start..prev_curr - 1, false)?),
-                                ),
+                                attr: is_pet_attr.then_some(Cow::Borrowed(
+                                    self.get_text_slice(state.start..prev_curr - 1, false)?,
+                                )),
                             });
                         }
                         // Hit unrelated word.

@@ -1,4 +1,4 @@
-use std::{iter::Peekable, borrow::Cow};
+use std::{borrow::Cow, iter::Peekable};
 
 use anyhow::{bail, Context};
 
@@ -113,7 +113,8 @@ macro_rules! update_effect_trigger_from_token {
                 )
                 .is_some()
                 {
-                    $effect_trigger.entity = Some(EntityType::Ability(Some(Cow::Borrowed("Start of battle"))));
+                    $effect_trigger.entity =
+                        Some(EntityType::Ability(Some(Cow::Borrowed("Start of battle"))));
                 }
             }
             _ => {}

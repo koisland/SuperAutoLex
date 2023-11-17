@@ -1,6 +1,6 @@
 //! SAP item attribute/entity tokens.
 
-use std::str::FromStr;
+use std::{str::FromStr, borrow::Cow};
 
 use anyhow::bail;
 
@@ -20,24 +20,24 @@ pub enum EntityType<'src> {
         /// Associated number of pets.
         number: Option<i32>,
         /// Specific pet name.
-        name: Option<&'src str>,
+        name: Option<Cow<'src, str>>,
         /// Specific pet attribute.
         /// - ex. `Strawberry`
-        attr: Option<&'src str>,
+        attr: Option<Cow<'src, str>>,
     },
     /// Food.
     Food {
         /// Associated number of foods.
         number: Option<i32>,
         /// Specific food name.
-        name: Option<&'src str>,
+        name: Option<Cow<'src, str>>,
     },
     /// Toy entity.
-    Toy(Option<&'src str>),
+    Toy(Option<Cow<'src, str>>),
     /// Game pack.
-    Pack(Option<&'src str>),
+    Pack(Option<Cow<'src, str>>),
     /// Effect ability.
-    Ability(Option<&'src str>),
+    Ability(Option<Cow<'src, str>>),
     /// Food perk.
     Perk(Option<i32>),
     /// Ailment.

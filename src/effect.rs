@@ -1,4 +1,4 @@
-use std::iter::Peekable;
+use std::{iter::Peekable, borrow::Cow};
 
 use anyhow::{bail, Context};
 
@@ -113,7 +113,7 @@ macro_rules! update_effect_trigger_from_token {
                 )
                 .is_some()
                 {
-                    $effect_trigger.entity = Some(EntityType::Ability(Some("Start of battle")));
+                    $effect_trigger.entity = Some(EntityType::Ability(Some(Cow::Borrowed("Start of battle"))));
                 }
             }
             _ => {}
@@ -267,26 +267,12 @@ impl<'src> Effect<'src> {
                     )
                     .is_some();
 
-                    match token_logic_order {
-                        Some(TokenType::Logic(LogicType::Previous)) => {
-                            if shop_tier {
-                                effect.entities.push(EntityType::Pet {
-                                    number: None,
-                                    name: None,
-                                    attr: Some("previous shop tier"),
-                                })
-                            }
-                        }
-                        Some(TokenType::Logic(LogicType::Next)) => {
-                            if shop_tier {
-                                effect.entities.push(EntityType::Pet {
-                                    number: None,
-                                    name: None,
-                                    attr: Some("next shop tier"),
-                                })
-                            }
-                        }
-                        _ => {}
+                    if shop_tier {
+                        effect.entities.push(EntityType::Pet {
+                            number: None,
+                            name: None,
+                            attr: Some(Cow::Owned(format!("{token_logic_order:?} shop tier"))),
+                        })
                     }
                 }
                 TokenType::Entity(entity) => {
@@ -415,6 +401,8 @@ impl<'src> Effect<'src> {
 
 #[cfg(test)]
 mod test {
+    use std::borrow::Cow;
+
     use crate::{
         token::{
             actions::ActionType, attribute::EntityType, logic::LogicType, position::PositionType,
@@ -561,7 +549,7 @@ mod test {
                 cond_trigger: Some(EffectTrigger {
                     action: None,
                     number: None,
-                    entity: Some(EntityType::Ability(Some("Start of battle"))),
+                    entity: Some(EntityType::Ability(Some(Cow::Borrowed("Start of battle")))),
                     target: None,
                     logic: Some(LogicType::Have),
                     prim_pos: Some(PositionType::Trigger),
@@ -606,7 +594,7 @@ mod test {
                     entity: Some(EntityType::Pet {
                         number: None,
                         name: None,
-                        attr: Some("Faint")
+                        attr: Some(Cow::Borrowed("Faint"))
                     }),
                     target: None,
                     logic: Some(LogicType::If),
@@ -642,7 +630,7 @@ mod test {
                     entity: Some(EntityType::Pet {
                         number: None,
                         name: None,
-                        attr: Some("Strawberry")
+                        attr: Some(Cow::Borrowed("Strawberry"))
                     }),
                     target: None,
                     logic: Some(LogicType::ForEach),
@@ -702,7 +690,7 @@ mod test {
                     EntityType::Health(Some(1)),
                     EntityType::Pet {
                         number: None,
-                        name: Some("Dirty Rat"),
+                        name: Some(Cow::Borrowed("Dirty Rat")),
                         attr: None
                     }
                 ],

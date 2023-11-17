@@ -1,4 +1,4 @@
-use std::slice::SliceIndex;
+use std::{slice::SliceIndex, borrow::Cow};
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -264,7 +264,7 @@ impl<'src> SAPText<'src> {
                                 name: None,
                                 // Assign attribute if any.
                                 attr: is_pet_attr.then_some(
-                                    self.get_text_slice(state.start..prev_curr - 1, false)?,
+                                    Cow::Borrowed(self.get_text_slice(state.start..prev_curr - 1, false)?),
                                 ),
                             });
                         }
@@ -288,7 +288,7 @@ impl<'src> SAPText<'src> {
                     ) => {
                         // Only assign name if not a pet attribute.
                         if !is_pet_attr {
-                            name.replace(word);
+                            name.replace(Cow::Borrowed(word));
                         }
                         state.start = start_of_word;
                         // Safe to unwrap as checked some entity.
@@ -302,7 +302,7 @@ impl<'src> SAPText<'src> {
                         let ttype = TokenType::parse(lowercase_word, None).unwrap_or(
                             TokenType::Entity(EntityType::Pet {
                                 number: None,
-                                name: Some(word),
+                                name: Some(Cow::Borrowed(word)),
                                 attr: None,
                             }),
                         );
@@ -383,12 +383,12 @@ impl<'src> SAPText<'src> {
                 ) {
                     TokenType::Entity(EntityType::Food {
                         number: None,
-                        name: word,
+                        name: word.map(Cow::Borrowed),
                     })
                 } else {
                     TokenType::Entity(EntityType::Pet {
                         number: None,
-                        name: word,
+                        name: word.map(Cow::Borrowed),
                         attr: None,
                     })
                 };
@@ -788,7 +788,7 @@ mod test {
                     ttype: TokenType::Entity(EntityType::Pet {
                         number: None,
                         name: None,
-                        attr: Some("Strawberry")
+                        attr: Some(Cow::Borrowed("Strawberry"))
                     }),
                     text: "Strawberry pet",
                     metadata: Scanner {
@@ -847,7 +847,7 @@ mod test {
                 Token {
                     ttype: TokenType::Entity(EntityType::Food {
                         number: None,
-                        name: Some("Fortune Cookie Perk")
+                        name: Some(Cow::Borrowed("Fortune Cookie Perk"))
                     }),
                     text: "Fortune Cookie Perk",
                     metadata: Scanner {
@@ -880,7 +880,7 @@ mod test {
                 Token {
                     ttype: TokenType::Entity(EntityType::Pet {
                         number: None,
-                        name: Some("Sturgeon"),
+                        name: Some(Cow::Borrowed("Sturgeon")),
                         attr: None
                     }),
                     text: "Sturgeon",
@@ -951,7 +951,7 @@ mod test {
                 Token {
                     ttype: TokenType::Entity(EntityType::Pet {
                         number: None,
-                        name: Some("Bus"),
+                        name: Some(Cow::Borrowed("Bus")),
                         attr: None
                     }),
                     text: "Bus",
@@ -973,7 +973,7 @@ mod test {
                 Token {
                     ttype: TokenType::Entity(EntityType::Food {
                         number: None,
-                        name: Some("Chili")
+                        name: Some(Cow::Borrowed("Chili"))
                     }),
                     text: "Chili",
                     metadata: Scanner {

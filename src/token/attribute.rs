@@ -17,20 +17,20 @@ use super::ParseNumber;
 pub enum EntityType<'src> {
     /// Pet.
     Pet {
-        /// Associated number of pets.
-        number: Option<i32>,
         /// Specific pet name.
         name: Option<Cow<'src, str>>,
         /// Specific pet attribute.
         /// - ex. `Strawberry`
         attr: Option<Cow<'src, str>>,
+        /// Specific pet pack.
+        pack: Option<Cow<'src, str>>,
     },
     /// Food.
     Food {
-        /// Associated number of foods.
-        number: Option<i32>,
         /// Specific food name.
         name: Option<Cow<'src, str>>,
+        /// Specific pack.
+        pack: Option<Cow<'src, str>>,
     },
     /// Toy entity.
     Toy(Option<Cow<'src, str>>),
@@ -92,8 +92,6 @@ impl<'src> EntityType<'src> {
             | EntityType::Level(v)
             | EntityType::Tier(v)
             | EntityType::Uses(v)
-            | EntityType::Pet { number: v, .. }
-            | EntityType::Food { number: v, .. }
             | EntityType::Perk(v)
             | EntityType::Ailment(v)
             | EntityType::Space(v)
@@ -105,7 +103,11 @@ impl<'src> EntityType<'src> {
             | EntityType::DamagePercent(v)
             | EntityType::GoldPercent(v)
             | EntityType::TrumpetPercent(v) => v.map(|val| val as i32),
-            EntityType::Toy(_) | EntityType::Pack(_) | EntityType::Ability { .. } => None,
+            EntityType::Pet { .. }
+            | EntityType::Food { .. }
+            | EntityType::Toy(_)
+            | EntityType::Pack(_)
+            | EntityType::Ability { .. } => None,
         }
     }
 }
@@ -122,12 +124,6 @@ impl<'src> ParseNumber for EntityType<'src> {
             | EntityType::Level(ref mut v)
             | EntityType::Tier(ref mut v)
             | EntityType::Uses(ref mut v)
-            | EntityType::Pet {
-                number: ref mut v, ..
-            }
-            | EntityType::Food {
-                number: ref mut v, ..
-            }
             | EntityType::Perk(ref mut v)
             | EntityType::Ailment(ref mut v)
             | EntityType::Space(ref mut v)
@@ -143,7 +139,11 @@ impl<'src> ParseNumber for EntityType<'src> {
             | EntityType::TrumpetPercent(ref mut v) => {
                 v.replace(cleaned_num_str.parse()?);
             }
-            EntityType::Toy(_) | EntityType::Pack(_) | EntityType::Ability { .. } => {}
+            EntityType::Pet { .. }
+            | EntityType::Food { .. }
+            | EntityType::Toy(_)
+            | EntityType::Pack(_)
+            | EntityType::Ability { .. } => {}
         }
 
         Ok(self)
@@ -156,13 +156,13 @@ impl<'src> FromStr for EntityType<'src> {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Ok(match s {
             "pet" | "pets" => EntityType::Pet {
-                number: None,
                 name: None,
                 attr: None,
+                pack: None,
             },
             "food" | "foods" => EntityType::Food {
-                number: None,
                 name: None,
+                pack: None,
             },
             "toy" | "toys" => EntityType::Toy(None),
             "perk" | "perks" => EntityType::Perk(None),

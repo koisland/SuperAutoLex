@@ -212,6 +212,19 @@ impl<'src> SAPText<'src> {
                 // ex. "Faint pet" or "Strawberry friend".
                 let mut is_pet_attr = false;
 
+                // Use last two tokens to determine if attribute.
+                let last_ttype = tokens.last().map(|token| &token.ttype);
+                let next_to_last_ttype = tokens
+                    .len()
+                    .checked_sub(2)
+                    .and_then(|idx| tokens.get(idx))
+                    .map(|token| &token.ttype);
+
+                let is_with_something = last_ttype == Some(&TokenType::Logic(LogicType::With));
+                let is_checking_trigger_has_something = next_to_last_ttype
+                    == Some(&TokenType::Position(PositionType::Trigger))
+                    && last_ttype == Some(&TokenType::Logic(LogicType::Have));
+
                 loop {
                     state.move_cursor(true, 1);
 
@@ -240,42 +253,45 @@ impl<'src> SAPText<'src> {
                             || next_word == Some("pet");
                     }
 
-                    // Perks have suffix word "perk"
-                    let is_next_word_food_related = next_word == Some("perk")
-                        || next_word == Some("Perk")
-                        || tokens.last().map(|token| &token.ttype)
-                            == Some(&TokenType::Logic(LogicType::With))
-                            && next_word != Some("ability");
+                    // Perks have suffix word "perk" or "with" some food.
+                    let is_next_word_food_related =
+                        next_word == Some("perk") || next_word == Some("Perk") || is_with_something;
 
                     // Set entity if meet condition.
-                    match (
-                        is_next_word_uppercase || is_pet_attr,
-                        is_next_word_food_related,
-                    ) {
-                        (true, true) | (false, true) => {
-                            entity.replace(EntityType::Food {
-                                number: None,
-                                name: None,
-                            });
-                        }
-                        (true, false) => {
-                            entity.replace(EntityType::Pet {
-                                number: None,
-                                name: None,
-                                // Assign attribute if any.
-                                attr: is_pet_attr.then_some(Cow::Borrowed(
-                                    self.get_text_slice(state.start..prev_curr - 1, false)?,
-                                )),
-                            });
-                        }
-                        // Hit unrelated word.
-                        (false, false) => {
-                            // Reset position to before next word.
-                            state.current = prev_curr - 1;
-                            break;
-                        }
+                    // End of ability means done with desc.
+                    if next_word == Some("ability") {
+                        entity.replace(EntityType::Ability(Some(Cow::Borrowed(
+                            self.get_text_slice(state.start..prev_curr - 1, false)?,
+                        ))));
+                        break;
+                    } else if is_next_word_food_related {
+                        entity.replace(EntityType::Food {
+                            name: None,
+                            pack: None,
+                        });
+                    } else if is_next_word_uppercase || is_pet_attr {
+                        entity.replace(EntityType::Pet {
+                            name: None,
+                            pack: None,
+                            // Assign attribute if any.
+                            attr: is_pet_attr.then_some(Cow::Borrowed(
+                                self.get_text_slice(state.start..prev_curr - 1, false)?,
+                            )),
+                        });
+                    // Keep going if trigger related.
+                    } else if is_checking_trigger_has_something {
+                    } else {
+                        // Reset position to before next word.
+                        state.current = prev_curr - 1;
+                        break;
                     }
-                    if !(is_next_word_uppercase || is_next_word_food_related) {
+
+                    // Reached the end of the descriptor or end of effect.
+                    // Allow to continue if uppercase or related to trigger's desc.
+                    // Exit if exceed length of effect.
+                    let done_with_desc =
+                        !is_next_word_uppercase ^ is_checking_trigger_has_something;
+                    if done_with_desc || state.current > self.effect.len() {
                         break;
                     }
                 }
@@ -294,6 +310,10 @@ impl<'src> SAPText<'src> {
                         // Safe to unwrap as checked some entity.
                         self.build_token(state, TokenType::Entity(entity.unwrap()))?
                     }
+                    Some(EntityType::Ability(_)) => {
+                        state.start = start_of_word;
+                        self.build_token(state, TokenType::Entity(entity.unwrap()))?
+                    }
                     _ => {
                         // Get lowercase effect for parsing.
                         let lowercase_word =
@@ -301,8 +321,8 @@ impl<'src> SAPText<'src> {
                         // Try to parse word defaulting to assuming is pet name.
                         let ttype = TokenType::parse(lowercase_word, None).unwrap_or(
                             TokenType::Entity(EntityType::Pet {
-                                number: None,
                                 name: Some(Cow::Borrowed(word)),
+                                pack: None,
                                 attr: None,
                             }),
                         );
@@ -317,21 +337,22 @@ impl<'src> SAPText<'src> {
                 let word = self.get_text(state, true)?;
                 let ttype = TokenType::parse(word, None);
 
-                // Consume digits ahead to create numeric token, if anys.
                 let mut prev_state = state.clone();
-                let next_digit_token = self.consume_while_cond(state, None, 1, is_digit);
+                // Skip space.
+                state.move_cursor(true, 1);
 
                 match ttype {
                     // If is entity type token, try to add next digit, if any.
                     Ok(TokenType::Entity(mut entity_type)) => {
-                        if let Some(digit_token) = &next_digit_token {
+                        // Consume digits ahead to create numeric token.
+                        // Use digit token value and update entity.
+                        if let Some(digit_token) = self.consume_while_cond(state, None, 0, is_digit)
+                        {
                             prev_state.current = state.current;
-                            let _ = entity_type.parse_num_str(digit_token.text);
+                            // Add num to entity type.
+                            entity_type.parse_num_str(digit_token.text)?;
                         }
                         tokens.push(self.build_token(&prev_state, TokenType::Entity(entity_type))?);
-
-                        // Early return to avoid adding numeric token twice.
-                        return Ok(());
                     }
                     // ex. "this has"
                     // If next token isn't "have", just add "this".
@@ -358,18 +379,35 @@ impl<'src> SAPText<'src> {
                             tokens,
                         )?;
                     }
+                    // Check for "any".This is specific to only describing packs.
+                    Ok(TokenType::Position(PositionType::Any)) => {
+                        if word == "any" {
+                            let Some(next_word_token) =
+                                self.consume_while_cond(state, None, 0, is_alpha)
+                            else {
+                                return Ok(());
+                            };
+
+                            // Check if it's describing a pack.
+                            if next_word_token.ttype == TokenType::Entity(EntityType::Pack(None)) {
+                                tokens.push(self.build_token(
+                                    &prev_state,
+                                    TokenType::Entity(EntityType::Pack(Some(Cow::Borrowed(word)))),
+                                )?)
+                            } else {
+                                tokens.push(next_word_token)
+                            }
+                        } else {
+                            // Is positional any, which is "random".
+                            tokens.push(self.build_token(&prev_state, ttype.unwrap())?);
+                        }
+                    }
                     // Otherwise, add new token.
                     Ok(ttype) => {
                         tokens.push(self.build_token(&prev_state, ttype)?);
                     }
                     // Invalid token type. Ignore.
                     _ => {}
-                }
-
-                // Reset state to before next numeric token.
-                // We do this because may need context of next token for numeric token.
-                if next_digit_token.is_some() {
-                    *state = prev_state
                 }
             }
             // Itemname at end of punctuation/statement.
@@ -382,14 +420,14 @@ impl<'src> SAPText<'src> {
                     Some(TokenType::Logic(LogicType::With))
                 ) {
                     TokenType::Entity(EntityType::Food {
-                        number: None,
+                        pack: None,
                         name: word.map(Cow::Borrowed),
                     })
                 } else {
                     TokenType::Entity(EntityType::Pet {
-                        number: None,
                         name: word.map(Cow::Borrowed),
                         attr: None,
+                        pack: None,
                     })
                 };
                 tokens.push(self.build_token(state, ttype)?)
@@ -685,6 +723,44 @@ mod test {
     use super::*;
 
     #[test]
+    fn test_tokenize_any_pack() {
+        // Edge case for "any" (normally interpreted as a position for pets or foods) pack.
+        let txt = SAPText::new("from any pack");
+        let tokens = txt.tokenize().unwrap();
+        assert_eq!(
+            *tokens,
+            [
+                Token {
+                    ttype: TokenType::Logic(LogicType::From),
+                    text: "from",
+                    metadata: Scanner {
+                        start: 0,
+                        current: 4,
+                        line: 1
+                    }
+                },
+                Token {
+                    ttype: TokenType::Entity(EntityType::Pack(Some(Cow::Borrowed("any")))),
+                    text: "any",
+                    metadata: Scanner {
+                        start: 5,
+                        current: 8,
+                        line: 1
+                    }
+                },
+                Token {
+                    ttype: TokenType::EndText,
+                    text: "",
+                    metadata: Scanner {
+                        start: 13,
+                        current: 13,
+                        line: 1
+                    }
+                }
+            ]
+        )
+    }
+    #[test]
     fn test_tokenize_hyphen_word() {
         let txt = SAPText::new("Give right-most friend +6 attack and +9 health.");
         let tokens = txt.tokenize().unwrap();
@@ -786,8 +862,8 @@ mod test {
                 },
                 Token {
                     ttype: TokenType::Entity(EntityType::Pet {
-                        number: None,
                         name: None,
+                        pack: None,
                         attr: Some(Cow::Borrowed("Strawberry"))
                     }),
                     text: "Strawberry pet",
@@ -846,7 +922,7 @@ mod test {
                 },
                 Token {
                     ttype: TokenType::Entity(EntityType::Food {
-                        number: None,
+                        pack: None,
                         name: Some(Cow::Borrowed("Fortune Cookie Perk"))
                     }),
                     text: "Fortune Cookie Perk",
@@ -879,8 +955,8 @@ mod test {
             [
                 Token {
                     ttype: TokenType::Entity(EntityType::Pet {
-                        number: None,
                         name: Some(Cow::Borrowed("Sturgeon")),
+                        pack: None,
                         attr: None
                     }),
                     text: "Sturgeon",
@@ -950,8 +1026,8 @@ mod test {
                 },
                 Token {
                     ttype: TokenType::Entity(EntityType::Pet {
-                        number: None,
                         name: Some(Cow::Borrowed("Bus")),
+                        pack: None,
                         attr: None
                     }),
                     text: "Bus",
@@ -972,7 +1048,7 @@ mod test {
                 },
                 Token {
                     ttype: TokenType::Entity(EntityType::Food {
-                        number: None,
+                        pack: None,
                         name: Some(Cow::Borrowed("Chili"))
                     }),
                     text: "Chili",

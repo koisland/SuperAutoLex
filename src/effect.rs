@@ -101,22 +101,7 @@ macro_rules! update_effect_trigger_from_token {
             }
             TokenType::Target(target) => $effect_trigger.target = Some(*target),
             TokenType::Action(action) => $effect_trigger.action = Some(*action),
-            TokenType::Logic(logic) => {
-                $effect_trigger.logic = Some(*logic);
-
-                // Check for specifically start of battle since made of multple tokens.
-                if matches_peek_next!(
-                    $tokens,
-                    |token| token.ttype == TokenType::Logic(LogicType::Start),
-                    |token| token.ttype == TokenType::Entity(EntityType::Battle(None)),
-                    |token| token.ttype == TokenType::Entity(EntityType::Ability(None))
-                )
-                .is_some()
-                {
-                    $effect_trigger.entity =
-                        Some(EntityType::Ability(Some(Cow::Borrowed("Start of battle"))));
-                }
-            }
+            TokenType::Logic(logic) => $effect_trigger.logic = Some(*logic),
             _ => {}
         }
     };
@@ -220,6 +205,9 @@ impl<'src> Effect<'src> {
             cond_trigger: create_if_cond(&mut tokens),
             ..Default::default()
         };
+        let mut num_entities: Option<usize> = None;
+        // Effect deals with random pets.
+        let mut random_pets = false;
         effect.trigger = trigger.clone();
 
         while let Some(token) = tokens.next() {
@@ -240,12 +228,17 @@ impl<'src> Effect<'src> {
                         health = PositionType::Illest
                     );
                 }
+                // Store numbers of entities to add.
+                TokenType::Numeric(NumericType::Number(Some(num))) => {
+                    num_entities = Some(usize::try_from(*num)?)
+                }
+                // Ignore other numbers.
                 TokenType::Numeric(_) => {}
                 // Blank pet token. Check ahead for attributes:
                 TokenType::Entity(EntityType::Pet {
-                    number: None,
                     name: None,
                     attr: None,
+                    pack: None,
                 }) => {
                     // Check for describing attr related to some order.
                     // ex. "from next shop"
@@ -261,20 +254,56 @@ impl<'src> Effect<'src> {
                     )
                     .map(|token| &token.ttype);
 
+                    let ability_for_pet = matches_peek_next!(
+                        tokens,
+                        |token| token.ttype == TokenType::Logic(LogicType::With),
+                        |token| matches!(token.ttype, TokenType::Entity(EntityType::Ability(_)))
+                    );
+
                     let shop_tier = matches_peek_next!(
                         tokens,
                         |token| token.ttype == TokenType::Target(TargetType::Shop),
                         |token| token.ttype == TokenType::Entity(EntityType::Tier(None))
                     )
                     .is_some();
+                    // A bit weird but token_logic_order consumes the first from.
+                    let pack_token = matches_peek_next!(tokens, |token| matches!(
+                        token.ttype,
+                        TokenType::Entity(EntityType::Pack(_))
+                    ));
 
-                    if shop_tier {
+                    // For each number of pets, add to entities.
+                    for _ in 0..num_entities.unwrap_or(1) {
+                        let attr = if shop_tier {
+                            Some(Cow::Owned(format!("{token_logic_order:?} shop tier")))
+                        } else if let Some(ability_token) = ability_for_pet {
+                            Some(Cow::Borrowed(ability_token.text))
+                        } else if random_pets {
+                            Some(Cow::Borrowed("random"))
+                        } else {
+                            None
+                        };
+                        // Add pack and attribute, if any.
                         effect.entities.push(EntityType::Pet {
-                            number: None,
                             name: None,
-                            attr: Some(Cow::Owned(format!("{token_logic_order:?} shop tier"))),
+                            pack: pack_token.map(|token| Cow::Borrowed(token.text)),
+                            attr,
                         })
                     }
+                }
+                TokenType::Entity(EntityType::Food {
+                    name: None,
+                    pack: None,
+                }) => {
+                    let pack_token = matches_peek_next!(
+                        tokens,
+                        |token| token.ttype == TokenType::Logic(LogicType::From),
+                        |token| matches!(token.ttype, TokenType::Entity(EntityType::Pack(_)))
+                    );
+                    effect.entities.push(EntityType::Food {
+                        name: None,
+                        pack: pack_token.map(|token| Cow::Borrowed(token.text)),
+                    });
                 }
                 TokenType::Entity(entity) => {
                     // Consume next token if damage attribute.
@@ -287,7 +316,16 @@ impl<'src> Effect<'src> {
                     effect.entities.push(entity.clone())
                 }
                 TokenType::EndText => {}
-                TokenType::Position(pos) => effect.position.push(*pos),
+                TokenType::Position(pos) => {
+                    // Edge-case where summoning random pets doesn't indicate position.
+                    if effect.action == Some(ActionType::Summon) && *pos == PositionType::Any {
+                        // Kinda code smelly but eh.
+                        random_pets = true;
+                        effect.position.push(PositionType::OnSelf);
+                    } else {
+                        effect.position.push(*pos)
+                    }
+                }
                 TokenType::Target(target) => effect.target = Some(*target),
                 // Create new effect trigger for for each effects.
                 // We cannot create multiple effects since we won't know stats/attributes of pets until runtime.
@@ -593,8 +631,8 @@ mod test {
                     action: None,
                     number: None,
                     entity: Some(EntityType::Pet {
-                        number: None,
                         name: None,
+                        pack: None,
                         attr: Some(Cow::Borrowed("Faint"))
                     }),
                     target: None,
@@ -629,8 +667,8 @@ mod test {
                     action: None,
                     number: None,
                     entity: Some(EntityType::Pet {
-                        number: None,
                         name: None,
+                        pack: None,
                         attr: Some(Cow::Borrowed("Strawberry"))
                     }),
                     target: None,
@@ -690,9 +728,9 @@ mod test {
                     EntityType::Attack(Some(1)),
                     EntityType::Health(Some(1)),
                     EntityType::Pet {
-                        number: None,
                         name: Some(Cow::Borrowed("Dirty Rat")),
-                        attr: None
+                        attr: None,
+                        pack: None,
                     }
                 ],
                 position: vec![PositionType::RightMost],
@@ -743,16 +781,67 @@ mod test {
     }
 
     #[test]
-    fn test_interpret_prev_tier_effect() {
-        // TODO: `from` signals descriptor of something. `as`/`EOF`/`.` signals end of descriptor.
-        // * pet
-        let effect_txt = SAPText::new("Summon one random pet with Faint ability from any pack.");
+    fn test_interpret_multi_summon_effect() {
+        let effect_txt = SAPText::new("Summon two pets.");
         let tokens = effect_txt.tokenize().unwrap();
-        for token in tokens.iter() {
-            println!("{token}")
-        }
 
         let effects = Effect::new(None, &tokens).unwrap();
-        println!("{:?}", effects[0])
+
+        assert_eq!(
+            effects[0],
+            Effect {
+                trigger: None,
+                cond_trigger: None,
+                target: None,
+                entities: vec![
+                    EntityType::Pet {
+                        name: None,
+                        attr: None,
+                        pack: None
+                    },
+                    EntityType::Pet {
+                        name: None,
+                        attr: None,
+                        pack: None
+                    }
+                ],
+                position: vec![PositionType::OnSelf],
+                action: Some(ActionType::Summon),
+                uses: None,
+                temp: false
+            }
+        )
+    }
+
+    #[test]
+    fn test_interpret_multi_attr_summon_effect() {
+        let effect_txt = SAPText::new("Summon two random pets from any pack.");
+        let tokens = effect_txt.tokenize().unwrap();
+        let effects = Effect::new(None, &tokens).unwrap();
+
+        assert_eq!(
+            effects[0],
+            Effect {
+                trigger: None,
+                cond_trigger: None,
+                target: None,
+                entities: vec![
+                    EntityType::Pet {
+                        name: None,
+                        attr: Some(Cow::Borrowed("random")),
+                        pack: Some(Cow::Borrowed("any"))
+                    },
+                    EntityType::Pet {
+                        name: None,
+                        attr: Some(Cow::Borrowed("random")),
+                        pack: Some(Cow::Borrowed("any"))
+                    }
+                ],
+                position: vec![PositionType::OnSelf],
+                action: Some(ActionType::Summon),
+                uses: None,
+                temp: false
+            }
+        )
     }
 }

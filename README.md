@@ -138,7 +138,15 @@ Item names are always uppercase.
     * Can also omitted if prior word is `with`.
         * `Dog with Melon.`
 
-The first word of a text must be either a `if` condition or an action.
+Actions/abilities/descriptors should be uppercase.
+* `Faint ability`
+* Multi-word abilities should start capitalized.
+    * `Start of battle ability`
+
+Descriptors should be lowercase.
+* `... ability` or `... pet`
+
+The first word will generally be an `if` condition or an action.
 * `If ..., ...`
 * `Gain ...`
 
